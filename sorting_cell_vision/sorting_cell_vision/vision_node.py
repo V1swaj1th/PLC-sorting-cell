@@ -23,6 +23,8 @@ class VisionNode(Node):
         super().__init__('vision_node')
         self.declare_parameter('frame_id', 'base')
         self.declare_parameter('rate_hz', 2.0)
+        self.declare_parameter('publish_markers', True)
+        self.publish_markers = self.get_parameter('publish_markers').value
         self.frame = self.get_parameter('frame_id').value
         self.poses_pub = self.create_publisher(PoseArray, 'cube_poses', 10)
         self.colors_pub = self.create_publisher(String, 'cube_colors', 10)
@@ -59,7 +61,8 @@ class VisionNode(Node):
             m.color.r, m.color.g, m.color.b, m.color.a = r / 255.0, g / 255.0, b / 255.0, 1.0
             markers.markers.append(m)
         self.poses_pub.publish(arr)
-        self.markers_pub.publish(markers)
+        if self.publish_markers:
+            self.markers_pub.publish(markers)
         self.colors_pub.publish(String(data=','.join(d['color'] for d in dets)))
 
         im = Image()

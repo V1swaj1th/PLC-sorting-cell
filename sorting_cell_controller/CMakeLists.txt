@@ -11,6 +11,8 @@ find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 
 add_executable(fk_demo src/fk_demo.cpp)
 target_include_directories(fk_demo PUBLIC
@@ -44,7 +46,20 @@ target_include_directories(cartesian_move_demo PUBLIC
 ament_target_dependencies(cartesian_move_demo rclcpp sensor_msgs)
 target_link_libraries(cartesian_move_demo Eigen3::Eigen)
 
-install(TARGETS fk_demo fk_checker ik_test traj_test cartesian_move_demo
+add_executable(sort_plan_test src/sort_plan_test.cpp)
+target_include_directories(sort_plan_test PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_link_libraries(sort_plan_test Eigen3::Eigen)
+
+add_executable(sorting_sequencer src/sorting_sequencer.cpp)
+target_include_directories(sorting_sequencer PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+ament_target_dependencies(sorting_sequencer rclcpp sensor_msgs geometry_msgs std_msgs visualization_msgs)
+target_link_libraries(sorting_sequencer Eigen3::Eigen)
+
+install(TARGETS fk_demo fk_checker ik_test traj_test cartesian_move_demo sort_plan_test sorting_sequencer
   DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
 
