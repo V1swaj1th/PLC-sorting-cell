@@ -58,13 +58,28 @@ class Configuration_CONFIG0;
 class Program_MAIN : public ProgramBase {
 public:
     // Local variables
-    IEC_INT HEARTBEAT;  // AT %QW0
-    IEC_INT MB_CMD;  // AT %MW0
-    IEC_BOOL LAMP_OUT;  // AT %QX0.0
-    IEC_BOOL _TMP_ADD2902825_ENO;
-    IEC_INT _TMP_ADD2902825_OUT;
-    IEC_BOOL _TMP_GT7836750_ENO;
-    IEC_BOOL _TMP_GT7836750_OUT;
+    IEC_BOOL INTERRUPTED;
+    IEC_BOOL CAN_START;
+    IEC_BOOL RUN;  // AT %QX0.1
+    IEC_BOOL ESTOP_ACTIVE;  // AT %QX0.2
+    IEC_BOOL RESET_CMD;  // AT %QX0.3
+    IEC_BOOL ST_IDLE;  // AT %QX0.4
+    IEC_BOOL ST_RUN;  // AT %QX0.5
+    IEC_BOOL ST_PICK;  // AT %QX0.6
+    IEC_BOOL ST_PLACE;  // AT %QX0.7
+    IEC_BOOL ST_DONE;  // AT %QX1.0
+    IEC_BOOL ESTOP_LATCH;  // AT %QX1.1
+    IEC_BOOL ST_FAULT;  // AT %QX1.2
+    IEC_BOOL START_PB;  // AT %QX2.0
+    IEC_BOOL STOP_PB;  // AT %QX2.1
+    IEC_BOOL ESTOP_OK;  // AT %QX2.2
+    IEC_BOOL RESET_PB;  // AT %QX2.3
+    IEC_BOOL AT_HOME;  // AT %QX2.4
+    IEC_BOOL CYCLE_DONE;  // AT %QX2.5
+    IEC_BOOL R_FAULT;  // AT %QX2.6
+    IEC_BOOL PH_PICK;  // AT %QX2.7
+    IEC_BOOL PH_PLACE;  // AT %QX3.0
+    IEC_BOOL ARM_BUSY;  // AT %QX3.1
 
     // Implicit IEC 61131-3 ENO pin (mirrors EN)
     IEC_BOOL ENO = true;
@@ -76,7 +91,7 @@ public:
     void run() override;
 
 #ifdef STRUCPP_THREADED
-    void located_range(uint32_t* __off, uint32_t* __cnt) const override { *__off = 0; *__cnt = 3; }
+    void located_range(uint32_t* __off, uint32_t* __cnt) const override { *__off = 0; *__cnt = 20; }
 #endif
 };
 
@@ -109,12 +124,29 @@ public:
  * The runtime iterates this array to bind variables to I/O image tables.
  */
 
-// Forward: HEARTBEAT AT %QW0 in Program_MAIN
-// Forward: MB_CMD AT %MW0 in Program_MAIN
-// Forward: LAMP_OUT AT %QX0.0 in Program_MAIN
+// Forward: RUN AT %QX0.1 in Program_MAIN
+// Forward: ESTOP_ACTIVE AT %QX0.2 in Program_MAIN
+// Forward: RESET_CMD AT %QX0.3 in Program_MAIN
+// Forward: ST_IDLE AT %QX0.4 in Program_MAIN
+// Forward: ST_RUN AT %QX0.5 in Program_MAIN
+// Forward: ST_PICK AT %QX0.6 in Program_MAIN
+// Forward: ST_PLACE AT %QX0.7 in Program_MAIN
+// Forward: ST_DONE AT %QX1.0 in Program_MAIN
+// Forward: ESTOP_LATCH AT %QX1.1 in Program_MAIN
+// Forward: ST_FAULT AT %QX1.2 in Program_MAIN
+// Forward: START_PB AT %QX2.0 in Program_MAIN
+// Forward: STOP_PB AT %QX2.1 in Program_MAIN
+// Forward: ESTOP_OK AT %QX2.2 in Program_MAIN
+// Forward: RESET_PB AT %QX2.3 in Program_MAIN
+// Forward: AT_HOME AT %QX2.4 in Program_MAIN
+// Forward: CYCLE_DONE AT %QX2.5 in Program_MAIN
+// Forward: R_FAULT AT %QX2.6 in Program_MAIN
+// Forward: PH_PICK AT %QX2.7 in Program_MAIN
+// Forward: PH_PLACE AT %QX3.0 in Program_MAIN
+// Forward: ARM_BUSY AT %QX3.1 in Program_MAIN
 
-extern LocatedVar locatedVars[3];
-constexpr uint32_t locatedVarsCount = 3;
+extern LocatedVar locatedVars[20];
+constexpr uint32_t locatedVarsCount = 20;
 
 #ifdef STRUCPP_THREADED
 extern void *locatedGlobals[1];

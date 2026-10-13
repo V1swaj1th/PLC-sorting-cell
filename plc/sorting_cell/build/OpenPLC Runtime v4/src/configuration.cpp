@@ -9,10 +9,27 @@ namespace strucpp {
 // Located Variables Descriptor Array
 // =============================================================================
 
-LocatedVar locatedVars[3] = {
-    { LocatedArea::Output, LocatedSize::Word, 0, 0, {0, 0, 0}, nullptr },  // HEARTBEAT AT %QW0
-    { LocatedArea::Memory, LocatedSize::Word, 0, 0, {0, 0, 0}, nullptr },  // MB_CMD AT %MW0
-    { LocatedArea::Output, LocatedSize::Bit, 0, 0, {0, 0, 0}, nullptr }  // LAMP_OUT AT %QX0.0
+LocatedVar locatedVars[20] = {
+    { LocatedArea::Output, LocatedSize::Bit, 0, 1, {0, 0, 0}, nullptr },  // RUN AT %QX0.1
+    { LocatedArea::Output, LocatedSize::Bit, 0, 2, {0, 0, 0}, nullptr },  // ESTOP_ACTIVE AT %QX0.2
+    { LocatedArea::Output, LocatedSize::Bit, 0, 3, {0, 0, 0}, nullptr },  // RESET_CMD AT %QX0.3
+    { LocatedArea::Output, LocatedSize::Bit, 0, 4, {0, 0, 0}, nullptr },  // ST_IDLE AT %QX0.4
+    { LocatedArea::Output, LocatedSize::Bit, 0, 5, {0, 0, 0}, nullptr },  // ST_RUN AT %QX0.5
+    { LocatedArea::Output, LocatedSize::Bit, 0, 6, {0, 0, 0}, nullptr },  // ST_PICK AT %QX0.6
+    { LocatedArea::Output, LocatedSize::Bit, 0, 7, {0, 0, 0}, nullptr },  // ST_PLACE AT %QX0.7
+    { LocatedArea::Output, LocatedSize::Bit, 1, 0, {0, 0, 0}, nullptr },  // ST_DONE AT %QX1.0
+    { LocatedArea::Output, LocatedSize::Bit, 1, 1, {0, 0, 0}, nullptr },  // ESTOP_LATCH AT %QX1.1
+    { LocatedArea::Output, LocatedSize::Bit, 1, 2, {0, 0, 0}, nullptr },  // ST_FAULT AT %QX1.2
+    { LocatedArea::Output, LocatedSize::Bit, 2, 0, {0, 0, 0}, nullptr },  // START_PB AT %QX2.0
+    { LocatedArea::Output, LocatedSize::Bit, 2, 1, {0, 0, 0}, nullptr },  // STOP_PB AT %QX2.1
+    { LocatedArea::Output, LocatedSize::Bit, 2, 2, {0, 0, 0}, nullptr },  // ESTOP_OK AT %QX2.2
+    { LocatedArea::Output, LocatedSize::Bit, 2, 3, {0, 0, 0}, nullptr },  // RESET_PB AT %QX2.3
+    { LocatedArea::Output, LocatedSize::Bit, 2, 4, {0, 0, 0}, nullptr },  // AT_HOME AT %QX2.4
+    { LocatedArea::Output, LocatedSize::Bit, 2, 5, {0, 0, 0}, nullptr },  // CYCLE_DONE AT %QX2.5
+    { LocatedArea::Output, LocatedSize::Bit, 2, 6, {0, 0, 0}, nullptr },  // R_FAULT AT %QX2.6
+    { LocatedArea::Output, LocatedSize::Bit, 2, 7, {0, 0, 0}, nullptr },  // PH_PICK AT %QX2.7
+    { LocatedArea::Output, LocatedSize::Bit, 3, 0, {0, 0, 0}, nullptr },  // PH_PLACE AT %QX3.0
+    { LocatedArea::Output, LocatedSize::Bit, 3, 1, {0, 0, 0}, nullptr }  // ARM_BUSY AT %QX3.1
 };
 
 #ifdef STRUCPP_THREADED

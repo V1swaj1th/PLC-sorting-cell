@@ -6,31 +6,54 @@
 namespace strucpp {
 
 Program_MAIN::Program_MAIN()
-    : HEARTBEAT(0), MB_CMD(0), LAMP_OUT(false), _TMP_ADD2902825_ENO(false), _TMP_ADD2902825_OUT(0), _TMP_GT7836750_ENO(false), _TMP_GT7836750_OUT(false)
+    : INTERRUPTED(false), CAN_START(false), RUN(false), ESTOP_ACTIVE(false), RESET_CMD(false), ST_IDLE(false), ST_RUN(false), ST_PICK(false), ST_PLACE(false), ST_DONE(false), ESTOP_LATCH(false), ST_FAULT(false), START_PB(false), STOP_PB(false), ESTOP_OK(false), RESET_PB(false), AT_HOME(false), CYCLE_DONE(false), R_FAULT(false), PH_PICK(false), PH_PLACE(false), ARM_BUSY(false)
 {
     // Initialize located variable pointers
-    locatedVars[0].pointer = HEARTBEAT.raw_ptr();
-    locatedVars[1].pointer = MB_CMD.raw_ptr();
-    locatedVars[2].pointer = LAMP_OUT.raw_ptr();
+    locatedVars[0].pointer = RUN.raw_ptr();
+    locatedVars[1].pointer = ESTOP_ACTIVE.raw_ptr();
+    locatedVars[2].pointer = RESET_CMD.raw_ptr();
+    locatedVars[3].pointer = ST_IDLE.raw_ptr();
+    locatedVars[4].pointer = ST_RUN.raw_ptr();
+    locatedVars[5].pointer = ST_PICK.raw_ptr();
+    locatedVars[6].pointer = ST_PLACE.raw_ptr();
+    locatedVars[7].pointer = ST_DONE.raw_ptr();
+    locatedVars[8].pointer = ESTOP_LATCH.raw_ptr();
+    locatedVars[9].pointer = ST_FAULT.raw_ptr();
+    locatedVars[10].pointer = START_PB.raw_ptr();
+    locatedVars[11].pointer = STOP_PB.raw_ptr();
+    locatedVars[12].pointer = ESTOP_OK.raw_ptr();
+    locatedVars[13].pointer = RESET_PB.raw_ptr();
+    locatedVars[14].pointer = AT_HOME.raw_ptr();
+    locatedVars[15].pointer = CYCLE_DONE.raw_ptr();
+    locatedVars[16].pointer = R_FAULT.raw_ptr();
+    locatedVars[17].pointer = PH_PICK.raw_ptr();
+    locatedVars[18].pointer = PH_PLACE.raw_ptr();
+    locatedVars[19].pointer = ARM_BUSY.raw_ptr();
 }
 
 void Program_MAIN::run() {
-    if (true) {
-        _TMP_ADD2902825_OUT = ADD(HEARTBEAT, static_cast<IEC_INT>(1));
-        _TMP_ADD2902825_ENO = true;
-    } else {
-        _TMP_ADD2902825_ENO = false;
+    ESTOP_ACTIVE = NOT(ESTOP_OK);
+    if (ESTOP_ACTIVE) {
+        ESTOP_LATCH = true;
     }
-    if (_TMP_ADD2902825_ENO) {
-        HEARTBEAT = _TMP_ADD2902825_OUT;
+    RESET_CMD = (NOT(ESTOP_ACTIVE)) & (RESET_PB);
+    if (RESET_CMD) {
+        ESTOP_LATCH = false;
     }
-    if (true) {
-        _TMP_GT7836750_OUT = GT(MB_CMD, static_cast<IEC_INT>(0));
-        _TMP_GT7836750_ENO = true;
-    } else {
-        _TMP_GT7836750_ENO = false;
+    if ((NOT(AT_HOME)) & (RUN)) {
+        INTERRUPTED = true;
     }
-    LAMP_OUT = _TMP_GT7836750_OUT;
+    if (AT_HOME) {
+        INTERRUPTED = false;
+    }
+    CAN_START = (AT_HOME) | (INTERRUPTED);
+    RUN = (((((NOT(CYCLE_DONE)) & (NOT(R_FAULT))) & (NOT(ESTOP_ACTIVE))) & (NOT(ESTOP_LATCH))) & (NOT(STOP_PB))) & (((RUN) | ((CAN_START) & (START_PB))));
+    ST_IDLE = ((((NOT(CYCLE_DONE)) & (NOT(R_FAULT))) & (NOT(ESTOP_LATCH))) & (NOT(ESTOP_ACTIVE))) & (NOT(RUN));
+    ST_RUN = ((NOT(PH_PLACE)) & (NOT(PH_PICK))) & (RUN);
+    ST_PICK = (PH_PICK) & (RUN);
+    ST_PLACE = (PH_PLACE) & (RUN);
+    ST_DONE = CYCLE_DONE;
+    ST_FAULT = R_FAULT;
 }
 
 }  // namespace strucpp

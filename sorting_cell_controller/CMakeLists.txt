@@ -13,6 +13,8 @@ find_package(tf2_ros REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(MODBUS REQUIRED libmodbus)
 
 add_executable(fk_demo src/fk_demo.cpp)
 target_include_directories(fk_demo PUBLIC
@@ -59,7 +61,22 @@ target_include_directories(sorting_sequencer PUBLIC
 ament_target_dependencies(sorting_sequencer rclcpp sensor_msgs geometry_msgs std_msgs visualization_msgs)
 target_link_libraries(sorting_sequencer Eigen3::Eigen)
 
-install(TARGETS fk_demo fk_checker ik_test traj_test cartesian_move_demo sort_plan_test sorting_sequencer
+add_executable(plc_link_test src/plc_link_test.cpp)
+target_include_directories(plc_link_test PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+  ${MODBUS_INCLUDE_DIRS})
+target_link_libraries(plc_link_test ${MODBUS_LIBRARIES} pthread)
+
+add_executable(plc_bridge src/plc_bridge.cpp)
+target_include_directories(plc_bridge PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+  ${MODBUS_INCLUDE_DIRS})
+ament_target_dependencies(plc_bridge rclcpp std_msgs)
+target_link_libraries(plc_bridge ${MODBUS_LIBRARIES})
+
+install(TARGETS fk_demo fk_checker ik_test traj_test cartesian_move_demo sort_plan_test sorting_sequencer plc_link_test plc_bridge
   DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
 

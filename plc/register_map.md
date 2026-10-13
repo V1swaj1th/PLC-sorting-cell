@@ -1,17 +1,20 @@
-# Modbus register map (OpenPLC Runtime v4 slave plugin, 127.0.0.1:5020, 0-based addresses)
+# Register map (v2) - Modbus TCP, OpenPLC slave, port 5020, unit id 1
 
-Scan cycle: 20 ms. PLC owns %QX/%QW; ROS writes only %MW (holding regs 1024+).
+Only coils are used. The two ranges are disjoint, so the PLC scan never overwrites what ROS wrote.
 
-| Direction | Signal | PLC var | Modbus | Status |
-|---|---|---|---|---|
-| PLC -> ROS | lamp_out (test) | %QX0.0 | coil 0 | verified |
-| PLC -> ROS | heartbeat (test) | %QW0 | holding reg 0 | verified |
-| ROS -> PLC | mb_cmd (test) | %MW0 | holding reg 1024 | verified |
-| PLC -> ROS | run, estop_active, reset_cmd | %QX0.1-0.3 | coils 1-3 | planned |
-| PLC -> ROS | cycle_state | %QW1 | holding reg 1 | planned |
-| ROS -> PLC | arm_busy, at_home, cycle_done, fault | %MW1-%MW4 | holding regs 1025-1028 | planned |
-| Panel -> PLC | start_pb, stop_pb, estop_ok (NC, 1 = healthy) | %MW10-%MW12 | holding regs 1034-1036 | planned |
+PLC -> ROS (ladder writes, bridge reads coils 0..10): see the first table in ladder_spec.md
+(run=1, estop_active=2, reset_cmd=3, st_idle=4, st_run=5, st_pick=6, st_place=7, st_done=8,
+estop_latch=9, st_fault=10; coil 0 = lamp_out from the first test program, ignored).
 
-Notes: %MX coils are disabled by default (mx_bits: 0). Discrete inputs and
-input registers are read-only over Modbus, so ROS cannot write them.
-After every program upload from the Editor, re-run plc_setup.sh (on the host).
+ROS -> PLC (bridge writes coils 16..25 in one request, ladder only reads them): second table in
+ladder_spec.md (start_pb=16, stop_pb=17, estop_ok=18, reset_pb=19, at_home=20, cycle_done=21,
+r_fault=22, ph_pick=23, ph_place=24, arm_busy=25).
+
+Coil address = 8 * byte + bit of the %QX location (%QX2.4 -> 8*2+4 = 20).
+
+Notes
+- estop_ok is a normally-closed loop: 1 = healthy. At power-up it is 0 until the bridge connects, so
+  the cell starts in E-STOP and needs a reset, like a real cell.
+- Push buttons are momentary: the bridge holds start/stop/reset high for 0.5 s per press.
+- Superseded: the first draft used holding registers %MW for ROS -> PLC. Coils avoid the GT-block
+  conversion rungs; the verification step plc_check.py proves the write path.

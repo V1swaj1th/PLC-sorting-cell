@@ -16,14 +16,29 @@ extern ::strucpp::Configuration_CONFIG0 g_config;
 
 namespace strucpp { namespace debug {
 
-const Entry debug_arr_0[7] STRUCPP_DEBUG_FLASH = {
-    { (void*)&g_config.INSTANCE0.HEARTBEAT, TAG_INT, 0 },  // INSTANCE0.HEARTBEAT
-    { (void*)&g_config.INSTANCE0.MB_CMD, TAG_INT, 0 },  // INSTANCE0.MB_CMD
-    { (void*)&g_config.INSTANCE0.LAMP_OUT, TAG_BOOL, 0 },  // INSTANCE0.LAMP_OUT
-    { (void*)&g_config.INSTANCE0._TMP_ADD2902825_ENO, TAG_BOOL, 0 },  // INSTANCE0._TMP_ADD2902825_ENO
-    { (void*)&g_config.INSTANCE0._TMP_ADD2902825_OUT, TAG_INT, 0 },  // INSTANCE0._TMP_ADD2902825_OUT
-    { (void*)&g_config.INSTANCE0._TMP_GT7836750_ENO, TAG_BOOL, 0 },  // INSTANCE0._TMP_GT7836750_ENO
-    { (void*)&g_config.INSTANCE0._TMP_GT7836750_OUT, TAG_BOOL, 0 },  // INSTANCE0._TMP_GT7836750_OUT
+const Entry debug_arr_0[22] STRUCPP_DEBUG_FLASH = {
+    { (void*)&g_config.INSTANCE0.INTERRUPTED, TAG_BOOL, 0 },  // INSTANCE0.INTERRUPTED
+    { (void*)&g_config.INSTANCE0.CAN_START, TAG_BOOL, 0 },  // INSTANCE0.CAN_START
+    { (void*)&g_config.INSTANCE0.RUN, TAG_BOOL, 0 },  // INSTANCE0.RUN
+    { (void*)&g_config.INSTANCE0.ESTOP_ACTIVE, TAG_BOOL, 0 },  // INSTANCE0.ESTOP_ACTIVE
+    { (void*)&g_config.INSTANCE0.RESET_CMD, TAG_BOOL, 0 },  // INSTANCE0.RESET_CMD
+    { (void*)&g_config.INSTANCE0.ST_IDLE, TAG_BOOL, 0 },  // INSTANCE0.ST_IDLE
+    { (void*)&g_config.INSTANCE0.ST_RUN, TAG_BOOL, 0 },  // INSTANCE0.ST_RUN
+    { (void*)&g_config.INSTANCE0.ST_PICK, TAG_BOOL, 0 },  // INSTANCE0.ST_PICK
+    { (void*)&g_config.INSTANCE0.ST_PLACE, TAG_BOOL, 0 },  // INSTANCE0.ST_PLACE
+    { (void*)&g_config.INSTANCE0.ST_DONE, TAG_BOOL, 0 },  // INSTANCE0.ST_DONE
+    { (void*)&g_config.INSTANCE0.ESTOP_LATCH, TAG_BOOL, 0 },  // INSTANCE0.ESTOP_LATCH
+    { (void*)&g_config.INSTANCE0.ST_FAULT, TAG_BOOL, 0 },  // INSTANCE0.ST_FAULT
+    { (void*)&g_config.INSTANCE0.START_PB, TAG_BOOL, 0 },  // INSTANCE0.START_PB
+    { (void*)&g_config.INSTANCE0.STOP_PB, TAG_BOOL, 0 },  // INSTANCE0.STOP_PB
+    { (void*)&g_config.INSTANCE0.ESTOP_OK, TAG_BOOL, 0 },  // INSTANCE0.ESTOP_OK
+    { (void*)&g_config.INSTANCE0.RESET_PB, TAG_BOOL, 0 },  // INSTANCE0.RESET_PB
+    { (void*)&g_config.INSTANCE0.AT_HOME, TAG_BOOL, 0 },  // INSTANCE0.AT_HOME
+    { (void*)&g_config.INSTANCE0.CYCLE_DONE, TAG_BOOL, 0 },  // INSTANCE0.CYCLE_DONE
+    { (void*)&g_config.INSTANCE0.R_FAULT, TAG_BOOL, 0 },  // INSTANCE0.R_FAULT
+    { (void*)&g_config.INSTANCE0.PH_PICK, TAG_BOOL, 0 },  // INSTANCE0.PH_PICK
+    { (void*)&g_config.INSTANCE0.PH_PLACE, TAG_BOOL, 0 },  // INSTANCE0.PH_PLACE
+    { (void*)&g_config.INSTANCE0.ARM_BUSY, TAG_BOOL, 0 },  // INSTANCE0.ARM_BUSY
 };
 
 const Entry* const debug_arrays[1] STRUCPP_DEBUG_FLASH = {
@@ -31,7 +46,7 @@ const Entry* const debug_arrays[1] STRUCPP_DEBUG_FLASH = {
 };
 
 const uint16_t debug_array_counts[1] STRUCPP_DEBUG_FLASH = {
-    7,
+    22,
 };
 
 const uint8_t debug_array_count = 1;

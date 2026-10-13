@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "md5": "b4c3820d9d1e8280b2d638195f76a04b",
+  "md5": "2bf5c34a307cb1413670532e1ede3fda",
   "typeTags": {
     "BOOL": 0,
     "SINT": 1,
@@ -27,56 +27,161 @@
   "arrays": [
     {
       "index": 0,
-      "count": 7
+      "count": 22
     }
   ],
   "leaves": [
     {
       "arrayIdx": 0,
       "elemIdx": 0,
-      "path": "INSTANCE0.HEARTBEAT",
-      "type": "INT",
-      "size": 2
+      "path": "INSTANCE0.INTERRUPTED",
+      "type": "BOOL",
+      "size": 1
     },
     {
       "arrayIdx": 0,
       "elemIdx": 1,
-      "path": "INSTANCE0.MB_CMD",
-      "type": "INT",
-      "size": 2
+      "path": "INSTANCE0.CAN_START",
+      "type": "BOOL",
+      "size": 1
     },
     {
       "arrayIdx": 0,
       "elemIdx": 2,
-      "path": "INSTANCE0.LAMP_OUT",
+      "path": "INSTANCE0.RUN",
       "type": "BOOL",
       "size": 1
     },
     {
       "arrayIdx": 0,
       "elemIdx": 3,
-      "path": "INSTANCE0._TMP_ADD2902825_ENO",
+      "path": "INSTANCE0.ESTOP_ACTIVE",
       "type": "BOOL",
       "size": 1
     },
     {
       "arrayIdx": 0,
       "elemIdx": 4,
-      "path": "INSTANCE0._TMP_ADD2902825_OUT",
-      "type": "INT",
-      "size": 2
+      "path": "INSTANCE0.RESET_CMD",
+      "type": "BOOL",
+      "size": 1
     },
     {
       "arrayIdx": 0,
       "elemIdx": 5,
-      "path": "INSTANCE0._TMP_GT7836750_ENO",
+      "path": "INSTANCE0.ST_IDLE",
       "type": "BOOL",
       "size": 1
     },
     {
       "arrayIdx": 0,
       "elemIdx": 6,
-      "path": "INSTANCE0._TMP_GT7836750_OUT",
+      "path": "INSTANCE0.ST_RUN",
+      "type": "BOOL",
+      "size": 1
+    },
+    {
+      "arrayIdx": 0,
+      "elemIdx": 7,
+      "path": "INSTANCE0.ST_PICK",
+      "type": "BOOL",
+      "size": 1
+    },
+    {
+      "arrayIdx": 0,
+      "elemIdx": 8,
+      "path": "INSTANCE0.ST_PLACE",
+      "type": "BOOL",
+      "size": 1
+    },
+    {
+      "arrayIdx": 0,
+      "elemIdx": 9,
+      "path": "INSTANCE0.ST_DONE",
+      "type": "BOOL",
+      "size": 1
+    },
+    {
+      "arrayIdx": 0,
+      "elemIdx": 10,
+      "path": "INSTANCE0.ESTOP_LATCH",
+      "type": "BOOL",
+      "size": 1
+    },
+    {
+      "arrayIdx": 0,
+      "elemIdx": 11,
+      "path": "INSTANCE0.ST_FAULT",
+      "type": "BOOL",
+      "size": 1
+    },
+    {
+      "arrayIdx": 0,
+      "elemIdx": 12,
+      "path": "INSTANCE0.START_PB",
+      "type": "BOOL",
+      "size": 1
+    },
+    {
+      "arrayIdx": 0,
+      "elemIdx": 13,
+      "path": "INSTANCE0.STOP_PB",
+      "type": "BOOL",
+      "size": 1
+    },
+    {
+      "arrayIdx": 0,
+      "elemIdx": 14,
+      "path": "INSTANCE0.ESTOP_OK",
+      "type": "BOOL",
+      "size": 1
+    },
+    {
+      "arrayIdx": 0,
+      "elemIdx": 15,
+      "path": "INSTANCE0.RESET_PB",
+      "type": "BOOL",
+      "size": 1
+    },
+    {
+      "arrayIdx": 0,
+      "elemIdx": 16,
+      "path": "INSTANCE0.AT_HOME",
+      "type": "BOOL",
+      "size": 1
+    },
+    {
+      "arrayIdx": 0,
+      "elemIdx": 17,
+      "path": "INSTANCE0.CYCLE_DONE",
+      "type": "BOOL",
+      "size": 1
+    },
+    {
+      "arrayIdx": 0,
+      "elemIdx": 18,
+      "path": "INSTANCE0.R_FAULT",
+      "type": "BOOL",
+      "size": 1
+    },
+    {
+      "arrayIdx": 0,
+      "elemIdx": 19,
+      "path": "INSTANCE0.PH_PICK",
+      "type": "BOOL",
+      "size": 1
+    },
+    {
+      "arrayIdx": 0,
+      "elemIdx": 20,
+      "path": "INSTANCE0.PH_PLACE",
+      "type": "BOOL",
+      "size": 1
+    },
+    {
+      "arrayIdx": 0,
+      "elemIdx": 21,
+      "path": "INSTANCE0.ARM_BUSY",
       "type": "BOOL",
       "size": 1
     }
