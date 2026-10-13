@@ -1,0 +1,29 @@
+PROGRAM main
+  VAR
+    heartbeat AT %QW0 : INT := 0;
+    mb_cmd AT %MW0 : INT := 0;
+    lamp_out AT %QX0.0 : BOOL := FALSE;
+  END_VAR
+  VAR
+    _TMP_ADD2902825_ENO : BOOL;
+    _TMP_ADD2902825_OUT : INT;
+    _TMP_GT7836750_ENO : BOOL;
+    _TMP_GT7836750_OUT : BOOL;
+  END_VAR
+
+  _TMP_ADD2902825_OUT := ADD(EN := TRUE, IN1 := heartbeat, IN2 := 1, ENO => _TMP_ADD2902825_ENO);
+  IF _TMP_ADD2902825_ENO THEN
+      heartbeat := _TMP_ADD2902825_OUT;
+  END_IF;
+  _TMP_GT7836750_OUT := GT(EN := TRUE, IN1 := mb_cmd, IN2 := 0, ENO => _TMP_GT7836750_ENO);
+  lamp_out := _TMP_GT7836750_OUT;
+END_PROGRAM
+
+
+CONFIGURATION Config0
+
+  RESOURCE Res0 ON PLC
+    TASK task0(INTERVAL := T#20ms,PRIORITY := 1);
+    PROGRAM instance0 WITH task0 : main;
+  END_RESOURCE
+END_CONFIGURATION
