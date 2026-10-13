@@ -31,7 +31,21 @@ target_include_directories(ik_test PUBLIC
   $<INSTALL_INTERFACE:include>)
 target_link_libraries(ik_test Eigen3::Eigen)
 
-install(TARGETS fk_demo fk_checker ik_test DESTINATION lib/${PROJECT_NAME})
+add_executable(traj_test src/traj_test.cpp)
+target_include_directories(traj_test PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_link_libraries(traj_test Eigen3::Eigen)
+
+add_executable(cartesian_move_demo src/cartesian_move_demo.cpp)
+target_include_directories(cartesian_move_demo PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+ament_target_dependencies(cartesian_move_demo rclcpp sensor_msgs)
+target_link_libraries(cartesian_move_demo Eigen3::Eigen)
+
+install(TARGETS fk_demo fk_checker ik_test traj_test cartesian_move_demo
+  DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
 
 ament_package()
