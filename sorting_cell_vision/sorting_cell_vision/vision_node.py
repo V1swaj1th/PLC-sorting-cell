@@ -2,6 +2,7 @@ import math
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from geometry_msgs.msg import Pose, PoseArray
 from sensor_msgs.msg import Image
 from std_msgs.msg import String
@@ -9,13 +10,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 
 from sorting_cell_vision.cube_detector import (BGR, CUBE_SIZE, CUBE_Z, detect_cubes,
                                                render_scene)
-
-# Fixed demo scene: (color, x, y, yaw) in the base frame, all inside the verified
-# reachable region (x -0.30..-0.70, y -0.35..+0.35).
-SCENE = [("red", -0.40, -0.20, 0.0),
-         ("green", -0.45, 0.15, 0.5),
-         ("blue", -0.58, -0.10, 1.0),
-         ("yellow", -0.62, 0.25, 0.3)]
+from sorting_cell_vision.scene_codec import detections_message, parse_scene
 
 
 class VisionNode(Node):
@@ -30,11 +25,32 @@ class VisionNode(Node):
         self.colors_pub = self.create_publisher(String, 'cube_colors', 10)
         self.markers_pub = self.create_publisher(MarkerArray, 'cube_markers', 10)
         self.image_pub = self.create_publisher(Image, 'camera/image', 10)
-        self.img = render_scene(SCENE, noise=4.0)
+        self.det_pub = self.create_publisher(String, 'vision/detections', 10)
+        self.img = None
+        self.rev = None
+        latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                             reliability=ReliabilityPolicy.RELIABLE)
+        self.create_subscription(String, 'scene/config', self.on_scene, latched)
         self.timer = self.create_timer(1.0 / self.get_parameter('rate_hz').value, self.tick)
-        self.get_logger().info('vision_node started: %d cubes in the synthetic scene' % len(SCENE))
+        self.get_logger().info('vision_node started, waiting for scene/config')
+
+    def on_scene(self, msg):
+        try:
+            rev, objects = parse_scene(msg.data)
+        except ValueError as e:
+            self.get_logger().error('ignoring scene/config: %s' % e)
+            return
+        if rev == self.rev:
+            return
+        # The synthetic camera renders the objects of the scene; the detector then works on the
+        # image only, exactly as it would on a real camera frame.
+        self.img = render_scene(objects, noise=4.0, seed=rev)
+        self.rev = rev
+        self.get_logger().info('scene revision %d: rendered %d objects' % (rev, len(objects)))
 
     def tick(self):
+        if self.img is None:
+            return
         stamp = self.get_clock().now().to_msg()
         dets = detect_cubes(self.img)
 
@@ -64,6 +80,7 @@ class VisionNode(Node):
         if self.publish_markers:
             self.markers_pub.publish(markers)
         self.colors_pub.publish(String(data=','.join(d['color'] for d in dets)))
+        self.det_pub.publish(String(data=detections_message(self.rev, dets)))
 
         im = Image()
         im.header.stamp = stamp

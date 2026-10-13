@@ -1,0 +1,24 @@
+# Scene for the sorting cell. Coordinates are metres in the robot base frame.
+# The table lies at x -0.80..-0.20 (x grows toward the base), y -0.45..0.45.
+#
+# objects:         the cubes the camera sees. color is one of
+#                  red, orange, yellow, green, cyan, blue, purple. yaw is in radians.
+#                  Allowed: x -0.77..-0.23, y -0.37..0.37, at least 0.09 m apart, 1 to 8 cubes.
+# containers:      one coloured container per colour (140 mm square). An object goes to the
+#                  container of its own colour. Allowed: x -0.73..-0.27, y -0.38..0.38.
+# gray_container:  receives every object that has no container of its colour.
+#
+# Check a file before launching:  ros2 run sorting_cell_controller scene_check my_scene.yaml
+version: 1
+name: default
+objects:
+  - {color: red,    x: -0.40, y: -0.20, yaw: 0.0}
+  - {color: green,  x: -0.45, y:  0.15, yaw: 0.5}
+  - {color: blue,   x: -0.58, y: -0.10, yaw: 1.0}
+  - {color: yellow, x: -0.62, y:  0.25, yaw: 0.3}
+containers:
+  - {color: red,    x: -0.30, y: -0.30}
+  - {color: green,  x: -0.30, y: -0.10}
+  - {color: blue,   x: -0.30, y:  0.10}
+  - {color: yellow, x: -0.30, y:  0.30}
+gray_container: {x: -0.72, y: 0.0}

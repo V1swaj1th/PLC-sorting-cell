@@ -17,24 +17,44 @@ def generate_launch_description():
                  ' name:=ur ur_type:=ur5e']), value_type=str)
     rviz_config = PathJoinSubstitution(
         [FindPackageShare('sorting_cell_bringup'), 'launch', 'sorting_cell.rviz'])
+    default_scene = PathJoinSubstitution(
+        [FindPackageShare('sorting_cell_bringup'), 'launch', 'scene_default.yaml'])
 
     return LaunchDescription([
         DeclareLaunchArgument('use_plc', default_value='false',
                               description='true: PLC (Modbus) gates the motion; false: stand-alone'),
         DeclareLaunchArgument('plc_host', default_value='127.0.0.1'),
         DeclareLaunchArgument('plc_port', default_value='5020'),
+        DeclareLaunchArgument('scene', default_value=default_scene,
+                              description='scene YAML: objects, coloured containers, gray container'),
+        DeclareLaunchArgument('auto_start', default_value='false',
+                              description='stand-alone only: true starts by itself after 5 s; '
+                                          'false waits for Start in the dashboard (cell/start)'),
+        DeclareLaunchArgument('dashboard', default_value='true',
+                              description='serve the scene dashboard in the browser'),
+        DeclareLaunchArgument('dashboard_host', default_value='127.0.0.1',
+                              description='127.0.0.1: this machine only; 0.0.0.0: reachable from other hosts'),
+        DeclareLaunchArgument('dashboard_port', default_value='8765'),
         Node(package='robot_state_publisher',
              executable='robot_state_publisher',
              parameters=[{'robot_description': robot_description}]),
+        Node(package='sorting_cell_controller', executable='scene_server',
+             parameters=[{'scene_file': LaunchConfiguration('scene')}], output='screen'),
         Node(package='sorting_cell_vision', executable='vision_node',
              parameters=[{'publish_markers': False}], output='screen'),
         Node(package='sorting_cell_controller', executable='sorting_sequencer',
              parameters=[{'start_delay_s': 5.0,
-                          'use_plc': ParameterValue(use_plc, value_type=bool)}],
+                          'use_plc': ParameterValue(use_plc, value_type=bool),
+                          'auto_start': ParameterValue(LaunchConfiguration('auto_start'), value_type=bool)}],
              output='screen'),
         Node(package='sorting_cell_controller', executable='plc_bridge',
              parameters=[{'host': LaunchConfiguration('plc_host'),
                           'port': ParameterValue(LaunchConfiguration('plc_port'), value_type=int)}],
              condition=IfCondition(use_plc), output='screen'),
+        Node(package='sorting_cell_dashboard', executable='dashboard_node',
+             parameters=[{'host': LaunchConfiguration('dashboard_host'),
+                          'port': ParameterValue(LaunchConfiguration('dashboard_port'), value_type=int),
+                          'use_plc': ParameterValue(use_plc, value_type=bool)}],
+             condition=IfCondition(LaunchConfiguration('dashboard')), output='screen'),
         Node(package='rviz2', executable='rviz2', arguments=['-d', rviz_config]),
     ])

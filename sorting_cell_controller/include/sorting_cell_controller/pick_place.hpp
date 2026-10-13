@@ -11,6 +11,9 @@
 
 namespace sorting_cell {
 
+// Name of the catch-all container for objects whose colour has no container of its own.
+constexpr const char* kGrayName = "gray";
+
 struct CubeTarget {
   std::string color;
   Eigen::Vector3d p;  // cube centre in the base frame [m]
@@ -25,6 +28,8 @@ struct PickPlaceConfig {
   CartesianLimits slow;       // descend / ascend
   CartesianLimits fast;       // transport between hover points
   std::map<std::string, Eigen::Vector3d> bins;  // colour -> bin centre
+  bool has_gray_bin = true;                      // objects with no bin of their colour go here
+  Eigen::Vector3d gray_bin = Eigen::Vector3d(-0.72, 0.0, 0.02);
   PickPlaceConfig() {
     fast.v_lin = 0.40;
     fast.a_lin = 0.80;
@@ -45,7 +50,16 @@ struct PickPlacePlan {
   std::vector<int> release_frame;          // per input cube: placed from this frame on (-1 = never)
   std::vector<int> end_frame;              // per input cube: last frame of its pick-and-place (-1 = never)
   std::vector<Eigen::Vector3d> place_pos;  // per input cube
+  std::vector<std::string> dest;           // per input cube: colour of the bin it goes to, or "gray"
 };
+
+// Where the k-th cube dropped into one bin goes: a 3 x 3 grid around the bin centre (45 mm pitch,
+// a 40 mm cube leaves 5 mm between neighbours and stays inside a 140 mm bin).
+constexpr int kBinSlots = 9;
+inline Eigen::Vector2d binSlotOffset(int k) {
+  static const int order[kBinSlots][2] = {{0, 0}, {0, 1}, {0, -1}, {1, 0}, {-1, 0}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+  return Eigen::Vector2d(order[k][0] * 0.045, order[k][1] * 0.045);
+}
 
 inline Vector6d homeJoints() {
   Vector6d q;
@@ -89,6 +103,7 @@ inline PickPlacePlan planPickPlace(const std::vector<CubeTarget>& cubes,
   plan.release_frame.assign(cubes.size(), -1);
   plan.end_frame.assign(cubes.size(), -1);
   plan.place_pos.assign(cubes.size(), Eigen::Vector3d::Zero());
+  plan.dest.assign(cubes.size(), "");
 
   Vector6d q = homeJoints();
   plan.q.push_back(q);
@@ -108,14 +123,27 @@ inline PickPlacePlan planPickPlace(const std::vector<CubeTarget>& cubes,
 
   for (size_t i = 0; i < cubes.size(); ++i) {
     const CubeTarget& c = cubes[i];
+    std::string key = c.color;
+    Eigen::Vector3d place;
     const auto bin = cfg.bins.find(c.color);
-    if (bin == cfg.bins.end()) {
+    if (bin != cfg.bins.end()) {
+      place = bin->second;
+    } else if (cfg.has_gray_bin) {
+      key = kGrayName;  // no container of this colour: it goes to the gray one
+      place = cfg.gray_bin;
+    } else {
       plan.error = "no bin for colour '" + c.color + "'";
       return plan;
     }
-    const int k = bin_count[c.color]++;
-    Eigen::Vector3d place = bin->second;
-    if (k > 0) place.y() += ((k % 2) ? 1.0 : -1.0) * 0.045 * ((k + 1) / 2);
+    const int k = bin_count[key]++;
+    if (k >= kBinSlots) {
+      plan.error = "the " + key + " bin is full (" + std::to_string(kBinSlots) + " cubes)";
+      return plan;
+    }
+    const Eigen::Vector2d off = binSlotOffset(k);
+    place.x() += off.x();
+    place.y() += off.y();
+    plan.dest[i] = key;
     plan.place_pos[i] = place;
 
     const double yaw = foldCubeYaw(c.yaw);

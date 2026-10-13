@@ -1,0 +1,16 @@
+# Same table, but there is no yellow container and the cubes include a purple and an orange
+# one, which have no container either. Those three go to the gray container.
+version: 1
+name: mismatch
+objects:
+  - {color: red,    x: -0.40, y: -0.20, yaw: 0.0}
+  - {color: green,  x: -0.45, y:  0.15, yaw: 0.5}
+  - {color: blue,   x: -0.58, y: -0.10, yaw: 1.0}
+  - {color: yellow, x: -0.62, y:  0.25, yaw: 0.3}
+  - {color: purple, x: -0.50, y:  0.00, yaw: 0.8}
+  - {color: orange, x: -0.64, y: -0.28, yaw: 0.2}
+containers:
+  - {color: red,   x: -0.30, y: -0.30}
+  - {color: green, x: -0.30, y: -0.10}
+  - {color: blue,  x: -0.30, y:  0.10}
+gray_container: {x: -0.72, y: 0.0}

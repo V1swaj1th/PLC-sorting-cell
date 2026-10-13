@@ -19,6 +19,7 @@ with RViz.
 | Perception | Python/OpenCV: synthetic top-down camera, HSV thresholding, contours, pixel to table coordinates | [`sorting_cell_vision`](sorting_cell_vision) |
 | Motion | C++/Eigen: UR5e FK from DH parameters, geometric Jacobian, adaptive damped-least-squares IK, Cartesian line + slerp planner, trapezoidal velocity profile, pick-and-place sequencer | [`sorting_cell_controller`](sorting_cell_controller) |
 | Teach and playback | Jog the tool in Cartesian steps, save named waypoints, record a program and replay it from a YAML file | [`teach_pendant`](sorting_cell_controller/src/teach_pendant.cpp), [`sorting_cell_teach`](sorting_cell_teach) |
+| Scene editing | YAML scene with colour matching and a gray catch-all container; browser dashboard with drag/click placement, random layouts, colour choice and an IK reachability map | [`scene.hpp`](sorting_cell_controller/include/sorting_cell_controller/scene.hpp), [`sorting_cell_dashboard`](sorting_cell_dashboard) |
 | Visualization | `robot_state_publisher` + RViz (UR5e, table, bins, cubes; a grasp is the cube marker attached to the tool) | [`sorting_cell_bringup`](sorting_cell_bringup) |
 
 ### Why the split looks like this
@@ -79,7 +80,7 @@ returns above that. At 1.0 m/s the peak joint speed (3.39 rad/s) exceeds the 3.1
 ### Requirements
 
 - ROS 2 Jazzy with `ros-jazzy-ur-description`, RViz, `libmodbus-dev`, `python3-opencv`,
-  `libyaml-cpp-dev` (teach mode), `python3-matplotlib` (plots), `pymodbus` (PLC check script only).
+  `libyaml-cpp-dev` (teach mode), `python3-matplotlib` (plots), `python3-yaml`, `pymodbus` (PLC check script only).
 - OpenPLC Runtime v4 ([autonomy-logic/openplc-runtime](https://github.com/autonomy-logic/openplc-runtime))
   and OpenPLC Editor v4 to compile and upload the ladder program. The Modbus slave plugin must be
   enabled on port 5020; [`plc/plc_setup.sh`](plc/plc_setup.sh) does this after each upload.
@@ -94,9 +95,24 @@ source install/setup.bash
 
 ### Stand-alone (no PLC)
 
+When ROS runs in a Docker container, start everything from the **host** with one command. It
+launches the cell inside the container and opens the dashboard in the host's browser as soon as
+it answers (it finds the right address whether the container uses host or bridge networking):
+
+```
+./scripts/run_cell.sh                     # extra launch arguments are passed on, e.g. use_plc:=true
+```
+
+`CONTAINER=name` and `PORT=8766` change the container and the dashboard port. Inside the container
+(or on a native ROS install) the launch alone is:
+
 ```
 ros2 launch sorting_cell_bringup sorting.launch.py
 ```
+
+then open **http://localhost:8765**, arrange the scene and press **Start sort**
+(see [Scene dashboard](#scene-dashboard)). `auto_start:=true` starts by itself after 5 s instead,
+`dashboard:=false` leaves the dashboard out.
 
 ### With the PLC
 
@@ -130,9 +146,120 @@ ros2 run sorting_cell_controller teach_test           # program file, waypoints,
 ros2 run sorting_cell_controller fk_checker          # own FK vs TF (needs a running robot_state_publisher)
 ros2 run sorting_cell_controller validation_report docs/validation
 python3 validation/plot_validation.py docs/validation
+ros2 run sorting_cell_controller scene_test           # scene rules, matching, gray container, edit commands, random placement
 PYTHONPATH=sorting_cell_vision python3 sorting_cell_vision/test/detect_test.py
+PYTHONPATH=sorting_cell_vision python3 sorting_cell_vision/test/scene_codec_test.py
 PYTHONPATH=sorting_cell_teach python3 sorting_cell_teach/test/keymap_test.py
+PYTHONPATH=sorting_cell_dashboard python3 sorting_cell_dashboard/test/core_test.py
 ```
+
+## Scene dashboard
+
+![Scene dashboard](docs/dashboard.png)
+
+`sorting.launch.py` also starts a small web dashboard (`sorting_cell_dashboard`, Python standard
+library HTTP server, no extra packages). Open **http://localhost:8765**. It shows the table from
+above with the robot base at the bottom, and every change goes through `scene_server`, so the same
+rules and the same IK check apply as for a scene file.
+
+- **Drag** a cube or a container to move it. While dragging, the outline turns green or red as the
+  position is checked; on release the move is applied or refused with the reason.
+- **Click placement:** select an item (on the table or in a list), then click a spot on the table.
+- **Random placement:** Objects, Containers or Everything, each a new arrangement that passes every
+  rule and plans with the own IK. Reset reloads the scene file the cell started with.
+- **Colours:** a dropdown per object and per container; the arrow next to each object shows where
+  it will go (its colour's container, or the gray one).
+- **Add / remove** objects and containers; a new item is put at a free, reachable place.
+- **IK reachability overlay:** red cells are places the arm cannot reach with the tool pointing down
+  (home, hover, grasp height planned with the own IK, 25 mm grid). The whole table lies inside the
+  reach; the overlay shows the limit around it and the dead zone next to the base.
+- **Start sort** sends `cell/start`. While the arm moves, editing is locked. With `use_plc:=true`
+  the PLC start button decides and the dashboard's Start is disabled.
+- Arrow keys nudge the selected item by 10 mm (Shift: 2 mm), Delete removes it. Save and Load
+  write and read scene YAML files (paths are inside the ROS machine or container).
+
+`scripts/run_cell.sh` picks the address for you. Without it, if the browser cannot reach the page
+(another machine, or a container without host networking), launch with `dashboard_host:=0.0.0.0`
+and open `http://<that machine's or container's IP>:8765`. The server only answers requests addressed to `localhost` or an
+IP address, and only accepts JSON posts, so other web sites cannot drive it from your browser.
+
+## Scene configuration, colour matching and the gray container
+
+The scene is a YAML file: which cubes lie where, which coloured containers exist and where, and
+where the gray container is. The cell reads it at start-up (`scene:=` launch argument), checks it
+with the same geometry rules and the same IK/planner that run the arm, and refuses a scene that
+cannot be sorted, with the reason.
+
+```yaml
+version: 1
+name: mismatch
+objects:                       # the cubes the camera sees
+  - {color: red,    x: -0.40, y: -0.20, yaw: 0.0}
+  - {color: yellow, x: -0.62, y:  0.25, yaw: 0.3}
+  - {color: purple, x: -0.50, y:  0.00, yaw: 0.8}
+containers:                    # one container per colour (140 mm square)
+  - {color: red,   x: -0.30, y: -0.30}
+  - {color: green, x: -0.30, y: -0.10}
+gray_container: {x: -0.72, y: 0.0}   # takes every object with no container of its colour
+```
+
+**Matching rule.** An object goes to the container of its own colour. If there is none, it goes to
+the gray container. Colours: `red`, `orange`, `yellow`, `green`, `cyan`, `blue`, `purple`
+(objects and containers use the same list; gray is reserved for the catch-all container).
+Several objects of one colour are fine, they take separate places inside the container (a 3 x 3
+grid, 45 mm pitch, so each container holds nine).
+
+| Rule | Limit |
+|---|---|
+| Objects | 1 to 8; x -0.77..-0.23, y -0.37..0.37 (inside the camera view); at least 0.09 m apart |
+| Containers | at most one per colour, up to 7; x -0.73..-0.27, y -0.38..0.38 (fully on the table); no overlaps |
+| Object next to a container | the cube must lie outside every container footprint |
+| Reachability | the complete sort is planned with the own IK before a scene is accepted; the tool must reach every pick and every drop place |
+
+Check a file before launching it:
+
+```
+ros2 run sorting_cell_controller scene_check my_scene.yaml
+```
+
+It prints each object with its destination container and the planned cycle time, or the first
+problem found. Two examples are installed with the bringup package: `scene_default.yaml` (every
+colour has a container) and `scene_mismatch.yaml` (yellow, purple and orange go to gray):
+
+```
+ros2 launch sorting_cell_bringup sorting.launch.py scene:=/path/to/my_scene.yaml
+ros2 topic pub --once /cell/start std_msgs/msg/Empty "{}"                # begin (or repeat) the sort
+```
+
+### Changing the scene while the cell is running
+
+`scene_server` owns the scene and publishes it (`scene/config`); the vision node renders it, the
+detector finds the cubes in the image, and the sequencer plans from those detections. Every
+message carries a revision number, so cubes of one scene are never planned against containers of
+another. Edits are sent as text on `scene/command` and answered on `scene/reply`:
+
+| Command | Effect |
+|---|---|
+| `move_object I X Y`, `move_container I X Y`, `move_gray X Y` | move one item (indices count from 0) |
+| `yaw_object I RADIANS` | rotate an object |
+| `color_object I COLOR`, `color_container I COLOR` | recolour (container colours must stay unique) |
+| `add_object COLOR X Y [YAW]`, `add_container COLOR X Y`, `remove_object I`, `remove_container I` | change the number of items |
+| `random objects`, `random containers`, `random all` | new random positions that pass every rule and the IK check |
+| `check_object I X Y`, `check_container I X Y`, `check_gray X Y` | test a position without changing anything |
+| `load PATH`, `save PATH`, `reset` | scene files (`~` works) |
+
+```
+ros2 topic pub --once /scene/command std_msgs/msg/String "{data: 'color_container 3 purple'}"
+ros2 topic echo /scene/reply
+```
+
+Every edit is also logged by `scene_server` in the launch terminal, for example
+`command 'color_container 3 purple': OK, container 3 is now purple (scene revision 2)` or
+`command 'color_container 3 purple': REFUSED, there is no container 3 (valid: 0 to 2)`.
+
+A refused command leaves the scene unchanged and says why. Edits are refused while the arm is
+moving; after the cycle the changed scene is planned from scratch. With a PLC, a finished cycle
+still waits for the PLC reset, then plans whatever scene is current.
 
 ## Teach and playback
 
@@ -218,7 +345,7 @@ wrote. Coil number = 8 x byte + bit of the `%QX` location.
 
 ## Limitations
 
-- The camera is synthetic (a rendered image with noise), not a real sensor.
+- The camera is synthetic (a rendered image with noise), not a real sensor. Containers are part of the cell layout and are not detected by the camera.
 - "Grasping" is a visual attach of the cube marker to the tool, not physics.
 - There is no collision avoidance and no planning around obstacles. Moves are straight lines in
   Cartesian space between hover points.
@@ -232,6 +359,6 @@ wrote. Coil number = 8 x byte + bit of the `%QX` location.
 - MoveIt2 for collision-aware planning, compared with the own Cartesian planner.
 - Gazebo or Isaac Sim physics with a real gripper, contact grasping and a moving conveyor.
 - YOLO-based detection to replace colour thresholding, including mixed object types.
-- A dashboard (rqt or web) with live PLC state, cycle count and faults.
+- Live PLC state, cycle count and faults in the scene dashboard.
 - A real PLC (Mitsubishi, Omron or a Raspberry Pi soft PLC) over Modbus or OPC UA, and a real arm.
 - Manual/auto mode, alarm handling and a dual-channel E-stop in the ladder.

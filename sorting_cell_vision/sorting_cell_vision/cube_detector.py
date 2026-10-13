@@ -11,15 +11,21 @@ CUBE_SIZE = 0.04                    # [m]
 CUBE_Z = CUBE_SIZE / 2.0            # cube centre height above the z=0 table
 MIN_AREA_PX = 200
 
-BGR = {"red": (40, 40, 220), "green": (60, 190, 60),
-       "blue": (220, 90, 40), "yellow": (40, 220, 230)}
+# The colours an object (or a container) can have. Same names as the C++ palette in scene.hpp.
+BGR = {"red": (40, 40, 220), "orange": (30, 140, 245), "yellow": (40, 220, 230),
+       "green": (60, 190, 60), "cyan": (220, 200, 40), "blue": (220, 90, 40),
+       "purple": (190, 50, 150)}
 
-# OpenCV HSV: H 0-179
+# OpenCV HSV: H 0-179. Hues of the rendered colours (red 0, orange 15, yellow 28, green 60,
+# cyan 93, blue 112, purple 141) with a gap of at least 3 between neighbouring ranges.
 HSV_RANGES = {
-    "red": [((0, 120, 70), (8, 255, 255)), ((172, 120, 70), (179, 255, 255))],
-    "yellow": [((20, 120, 70), (35, 255, 255))],
+    "red": [((0, 120, 70), (6, 255, 255)), ((174, 120, 70), (179, 255, 255))],
+    "orange": [((9, 120, 70), (19, 255, 255))],
+    "yellow": [((22, 120, 70), (35, 255, 255))],
     "green": [((40, 80, 50), (85, 255, 255))],
-    "blue": [((100, 120, 50), (130, 255, 255))],
+    "cyan": [((88, 100, 50), (100, 255, 255))],
+    "blue": [((104, 120, 50), (128, 255, 255))],
+    "purple": [((132, 80, 50), (160, 255, 255))],
 }
 
 

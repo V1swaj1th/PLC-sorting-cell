@@ -65,7 +65,7 @@ target_include_directories(sorting_sequencer PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 ament_target_dependencies(sorting_sequencer rclcpp sensor_msgs geometry_msgs std_msgs visualization_msgs)
-target_link_libraries(sorting_sequencer Eigen3::Eigen)
+target_link_libraries(sorting_sequencer Eigen3::Eigen ${YAML_CPP_TARGET})
 
 add_executable(plc_link_test src/plc_link_test.cpp)
 target_include_directories(plc_link_test PUBLIC
@@ -101,7 +101,26 @@ target_include_directories(teach_pendant PUBLIC
 ament_target_dependencies(teach_pendant rclcpp sensor_msgs geometry_msgs std_msgs visualization_msgs)
 target_link_libraries(teach_pendant Eigen3::Eigen ${YAML_CPP_TARGET})
 
-install(TARGETS fk_demo fk_checker ik_test traj_test cartesian_move_demo sort_plan_test sorting_sequencer plc_link_test plc_bridge validation_report teach_test teach_pendant
+add_executable(scene_test src/scene_test.cpp)
+target_include_directories(scene_test PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_link_libraries(scene_test Eigen3::Eigen ${YAML_CPP_TARGET})
+
+add_executable(scene_check src/scene_check.cpp)
+target_include_directories(scene_check PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_link_libraries(scene_check Eigen3::Eigen ${YAML_CPP_TARGET})
+
+add_executable(scene_server src/scene_server.cpp)
+target_include_directories(scene_server PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+ament_target_dependencies(scene_server rclcpp std_msgs)
+target_link_libraries(scene_server Eigen3::Eigen ${YAML_CPP_TARGET})
+
+install(TARGETS fk_demo fk_checker ik_test traj_test cartesian_move_demo sort_plan_test sorting_sequencer plc_link_test plc_bridge validation_report teach_test teach_pendant scene_test scene_check scene_server
   DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY programs/ DESTINATION share/${PROJECT_NAME}/programs)
