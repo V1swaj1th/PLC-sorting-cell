@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>sorting_cell_teach</name>
+  <version>0.1.0</version>
+  <description>Keyboard client for the teach pendant (jog, save waypoints, record and play programs)</description>
+  <maintainer email="viswajithmanthripragada44@gmail.com">vj</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

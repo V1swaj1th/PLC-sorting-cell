@@ -1,0 +1,27 @@
+version: 1
+name: demo_teach
+waypoints:
+  a_hover:
+    position: [-0.4, -0.2, 0.2]
+    orientation_xyzw: [0.707106781187, 0.707106781187, 0, 0]
+  a_grasp:
+    position: [-0.4, -0.2, 0.02]
+    orientation_xyzw: [0.707106781187, 0.707106781187, 0, 0]
+  b_hover:
+    position: [-0.45, 0.15, 0.2]
+    orientation_xyzw: [0.510183526486, 0.860065561049, 0, 0]
+  b_place:
+    position: [-0.45, 0.15, 0.02]
+    orientation_xyzw: [0.510183526486, 0.860065561049, 0, 0]
+steps:
+  - move: a_hover
+    speed: fast
+  - move: a_grasp
+  - gripper: close
+  - move: a_hover
+  - move: b_hover
+    speed: fast
+  - move: b_place
+  - gripper: open
+  - move: b_hover
+  - home: true

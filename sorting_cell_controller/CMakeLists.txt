@@ -15,6 +15,12 @@ find_package(std_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(MODBUS REQUIRED libmodbus)
+find_package(yaml-cpp REQUIRED)
+if(TARGET yaml-cpp::yaml-cpp)
+  set(YAML_CPP_TARGET yaml-cpp::yaml-cpp)
+else()
+  set(YAML_CPP_TARGET yaml-cpp)
+endif()
 
 add_executable(fk_demo src/fk_demo.cpp)
 target_include_directories(fk_demo PUBLIC
@@ -82,8 +88,22 @@ target_include_directories(validation_report PUBLIC
   $<INSTALL_INTERFACE:include>)
 target_link_libraries(validation_report Eigen3::Eigen)
 
-install(TARGETS fk_demo fk_checker ik_test traj_test cartesian_move_demo sort_plan_test sorting_sequencer plc_link_test plc_bridge validation_report
+add_executable(teach_test src/teach_test.cpp)
+target_include_directories(teach_test PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_link_libraries(teach_test Eigen3::Eigen ${YAML_CPP_TARGET})
+
+add_executable(teach_pendant src/teach_pendant.cpp)
+target_include_directories(teach_pendant PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+ament_target_dependencies(teach_pendant rclcpp sensor_msgs geometry_msgs std_msgs visualization_msgs)
+target_link_libraries(teach_pendant Eigen3::Eigen ${YAML_CPP_TARGET})
+
+install(TARGETS fk_demo fk_checker ik_test traj_test cartesian_move_demo sort_plan_test sorting_sequencer plc_link_test plc_bridge validation_report teach_test teach_pendant
   DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
+install(DIRECTORY programs/ DESTINATION share/${PROJECT_NAME}/programs)
 
 ament_package()

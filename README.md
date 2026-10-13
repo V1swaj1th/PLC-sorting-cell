@@ -18,6 +18,7 @@ with RViz.
 | Bridge | C++ Modbus TCP master (libmodbus), 20 Hz, fail-safe on link loss | [`sorting_cell_controller/src/plc_bridge.cpp`](sorting_cell_controller/src/plc_bridge.cpp) |
 | Perception | Python/OpenCV: synthetic top-down camera, HSV thresholding, contours, pixel to table coordinates | [`sorting_cell_vision`](sorting_cell_vision) |
 | Motion | C++/Eigen: UR5e FK from DH parameters, geometric Jacobian, adaptive damped-least-squares IK, Cartesian line + slerp planner, trapezoidal velocity profile, pick-and-place sequencer | [`sorting_cell_controller`](sorting_cell_controller) |
+| Teach and playback | Jog the tool in Cartesian steps, save named waypoints, record a program and replay it from a YAML file | [`teach_pendant`](sorting_cell_controller/src/teach_pendant.cpp), [`sorting_cell_teach`](sorting_cell_teach) |
 | Visualization | `robot_state_publisher` + RViz (UR5e, table, bins, cubes; a grasp is the cube marker attached to the tool) | [`sorting_cell_bringup`](sorting_cell_bringup) |
 
 ### Why the split looks like this
@@ -78,7 +79,7 @@ returns above that. At 1.0 m/s the peak joint speed (3.39 rad/s) exceeds the 3.1
 ### Requirements
 
 - ROS 2 Jazzy with `ros-jazzy-ur-description`, RViz, `libmodbus-dev`, `python3-opencv`,
-  `python3-matplotlib` (plots), `pymodbus` (PLC check script only).
+  `libyaml-cpp-dev` (teach mode), `python3-matplotlib` (plots), `pymodbus` (PLC check script only).
 - OpenPLC Runtime v4 ([autonomy-logic/openplc-runtime](https://github.com/autonomy-logic/openplc-runtime))
   and OpenPLC Editor v4 to compile and upload the ladder program. The Modbus slave plugin must be
   enabled on port 5020; [`plc/plc_setup.sh`](plc/plc_setup.sh) does this after each upload.
@@ -125,11 +126,85 @@ ros2 run sorting_cell_controller ik_test             # Jacobian, IK, singularity
 ros2 run sorting_cell_controller traj_test           # velocity profile and Cartesian planner
 ros2 run sorting_cell_controller sort_plan_test      # pick-and-place planning, 300 random scenes
 ros2 run sorting_cell_controller plc_link_test       # bridge vs a software PLC (no PLC needed)
+ros2 run sorting_cell_controller teach_test           # program file, waypoints, jogs and playback planning
 ros2 run sorting_cell_controller fk_checker          # own FK vs TF (needs a running robot_state_publisher)
 ros2 run sorting_cell_controller validation_report docs/validation
 python3 validation/plot_validation.py docs/validation
 PYTHONPATH=sorting_cell_vision python3 sorting_cell_vision/test/detect_test.py
+PYTHONPATH=sorting_cell_teach python3 sorting_cell_teach/test/keymap_test.py
 ```
+
+## Teach and playback
+
+A stand-alone mode for programming the arm by hand: move the tool in Cartesian steps, save named
+waypoints, record a program of moves, gripper actions and dwells, and play it back or store it as
+a YAML file. It uses the same FK, Jacobian, IK and trapezoidal planner as the sorting cell.
+
+```
+ros2 launch sorting_cell_bringup teach.launch.py         # shell 1: pendant + RViz
+ros2 run sorting_cell_teach teach_keyboard               # shell 2: key-driven client (needs a real terminal)
+```
+
+Do not run it together with `sorting.launch.py` (both publish `joint_states`). Teach mode is not
+gated by the PLC and has no E-stop.
+
+### Keys
+
+| Key | Action |
+|---|---|
+| `w` `s` | jog -x / +x in the base frame (`w` is toward the table) |
+| `a` `d` | jog -y / +y |
+| `r` `f` | jog up / down |
+| `q` `e` | rotate the tool about the vertical axis, + / - |
+| `+` `-` | step size 2, 5, 10, 20, 50, 100 mm (yaw step is 5 rad per metre of step, 0.05 rad at 10 mm) |
+| `m` | save the current pose as a named waypoint and append a `move` step |
+| `o` `c` | append a gripper open / close step |
+| `t` `h` | append a dwell (asks for seconds) / a home step |
+| `g` `H` | go to a waypoint / go home (not recorded) |
+| `u` `N` | remove the last step / clear everything |
+| `P` `space` `v` `x` | play, pause, resume, stop |
+| `W` `L` | write the program to a YAML file / load one |
+| `l` `p` `i` | list waypoints / list program steps / show the current pose |
+| `?` `Q` | help / quit |
+
+The same commands can be sent as text on `teach/command` (`jog dx dy dz rx ry rz`, `save NAME`,
+`gripper open|close`, `dwell SECONDS`, `addhome`, `undo`, `goto NAME`, `home`, `delete NAME`,
+`new`, `list`, `steps`, `status`, `write PATH`, `load PATH`, `play`, `pause`, `resume`, `stop`).
+Replies appear on `teach/status`:
+
+```
+ros2 topic pub --once /teach/command std_msgs/msg/String "{data: 'jog -0.05 0 0 0 0 0'}"
+ros2 topic echo /teach/status
+```
+
+### Program file
+
+```yaml
+version: 1
+name: demo_teach
+waypoints:
+  a_hover:
+    position: [-0.4, -0.2, 0.2]                 # metres, robot base frame
+    orientation_xyzw: [0.7071, 0.7071, 0, 0]    # tool orientation as a quaternion
+  a_grasp:
+    position: [-0.4, -0.2, 0.02]
+    orientation_xyzw: [0.7071, 0.7071, 0, 0]
+steps:
+  - move: a_hover
+    speed: fast          # optional; the default is the slow transport speed
+  - move: a_grasp
+  - gripper: close
+  - dwell: 0.5           # seconds
+  - move: a_hover
+  - home: true
+```
+
+Step types are `move` (a waypoint name, optional `speed: fast`), `gripper` (`open` or `close`),
+`dwell` (seconds) and `home`. A file with an unknown waypoint, an unknown step type or a bad number
+is rejected with a message and leaves the current program untouched. A program is compiled before
+it plays: every move is solved with the IK from the end of the previous move, so an unreachable
+waypoint is reported with its step number before the arm moves. An example is in
+[`programs/demo_teach.yaml`](sorting_cell_controller/programs/demo_teach.yaml); load it with `L`.
 
 ## Modbus register map
 
@@ -149,6 +224,7 @@ wrote. Coil number = 8 x byte + bit of the `%QX` location.
   Cartesian space between hover points.
 - The safety logic is a demonstration, not a certified safety system. A real E-stop uses
   safety-rated hardware. The 0.3 s stop ramp is a simulation choice, not a stopping category.
+- Teach mode moves along straight lines in Cartesian space with no collision checking, and the gripper step only changes the marker state. It is not PLC-gated.
 - Manipulability dips to 0.021 at the bins closest to the base (see Results).
 
 ## Future work
