@@ -24,8 +24,8 @@ bool g_interrupted = false;  // local BOOL in the ladder program
 void ladderScan(uint8_t* c) {
   auto b = [&](int a) { return c[a] != 0; };
   const bool start_pb = b(16), stop_pb = b(17), estop_ok = b(18), reset_pb = b(19), at_home = b(20),
-             cycle_done = b(21), r_fault = b(22), ph_pick = b(23), ph_place = b(24);
-  bool run = b(1), latch = b(9);
+             cycle_done = b(21), r_fault = b(22), ph_pick = b(23), ph_place = b(24), drive_fault = b(26);
+  bool run = b(1), latch = b(9), drive_alarm = b(11);
   const bool estop_active = !estop_ok;                      // R1  NC contact -> coil
   if (estop_active) latch = true;                           // R2  S
   const bool reset_cmd = reset_pb && !estop_active;         // R3
@@ -34,17 +34,20 @@ void ladderScan(uint8_t* c) {
   if (at_home) g_interrupted = false;                       // R6  R
   const bool can_start = at_home || g_interrupted;          // R7
   run = ((start_pb && can_start) || run) && !stop_pb && !latch && !estop_active && !r_fault &&
-        !cycle_done;                                        // R8
+        !cycle_done && !drive_alarm;                        // R8
   c[1] = run;
   c[2] = estop_active;
   c[3] = reset_cmd;
-  c[4] = !run && !estop_active && !latch && !r_fault && !cycle_done;  // R9  st_idle
+  c[4] = !run && !estop_active && !latch && !r_fault && !cycle_done && !drive_alarm;  // R9  st_idle
   c[5] = run && !ph_pick && !ph_place;                      // R10 st_run
   c[6] = run && ph_pick;                                    // R11 st_pick
   c[7] = run && ph_place;                                   // R12 st_place
   c[8] = cycle_done;                                        // R13 st_done
   c[9] = latch;
-  c[10] = r_fault;                                          // R14 st_fault
+  c[10] = r_fault || drive_alarm;                           // R14 st_fault
+  if (drive_fault) drive_alarm = true;                      // R15 S
+  if (reset_pb && !drive_fault) drive_alarm = false;        // R16 R
+  c[11] = drive_alarm;
 }
 
 void serverThread(int port) {
@@ -217,7 +220,29 @@ int main() {
   pulse(&PlcInputs::start_pb);
   expect("run starts once at home", g_out.run);
 
-  std::printf("10. Link failure is reported\n");
+  std::printf("10. Servo drive fault: the PLC latches the alarm\n");
+  pulse(&PlcInputs::start_pb);
+  g_in.at_home = false;
+  step();
+  expect("running before the fault", g_out.run);
+  g_in.drive_fault = true;
+  step();
+  expect("drive_alarm latched", g_out.drive_alarm);
+  expect("run dropped", !g_out.run);
+  expectState("state DRIVE_ALARM", "DRIVE_ALARM");
+  pulse(&PlcInputs::reset_pb);
+  expect("reset refused while the drive still reports the fault", g_out.drive_alarm);
+  g_in.drive_fault = false;  // the drive was reset and is healthy again
+  step();
+  expect("alarm stays latched after the drive fault clears", g_out.drive_alarm);
+  pulse(&PlcInputs::start_pb);
+  expect("start refused while the alarm is latched", !g_out.run);
+  pulse(&PlcInputs::reset_pb);
+  expect("reset clears the alarm", !g_out.drive_alarm);
+  pulse(&PlcInputs::start_pb);
+  expect("start accepted again (resume after the interruption)", g_out.run);
+
+  std::printf("11. Link failure is reported\n");
   g_stop = true;
   link.close();
   srv.join();

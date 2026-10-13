@@ -13,8 +13,9 @@
 using namespace sorting_cell;
 
 // Modbus TCP master between the PLC (OpenPLC) and the ROS 2 nodes.
-//   PLC -> ROS : plc/run, plc/estop, plc/reset (Bool), plc/state (String)
+//   PLC -> ROS : plc/run, plc/estop, plc/reset, plc/drive_alarm (Bool), plc/state (String)
 //   ROS -> PLC : arm_busy, at_home, cycle_done, fault (Bool), arm_phase (String) from the sequencer;
+//                drive/fault (Bool) from the servo drive (latched in the PLC as drive_alarm);
 //                operator panel: panel/start, panel/stop, panel/reset (Empty = momentary push button),
 //                panel/estop (Bool, true = E-stop pressed, latching)
 // Fail-safe: while the PLC is unreachable the bridge publishes run=false, estop=true.
@@ -34,6 +35,7 @@ class PlcBridge : public rclcpp::Node {
     reset_pub_ = create_publisher<std_msgs::msg::Bool>("plc/reset", 10);
     state_pub_ = create_publisher<std_msgs::msg::String>("plc/state", 10);
     conn_pub_ = create_publisher<std_msgs::msg::Bool>("plc/connected", 10);
+    alarm_pub_ = create_publisher<std_msgs::msg::Bool>("plc/drive_alarm", 10);
 
     auto bool_sub = [this](const char* topic, bool PlcInputs::*field) {
       return create_subscription<std_msgs::msg::Bool>(
@@ -43,6 +45,7 @@ class PlcBridge : public rclcpp::Node {
     subs_bool_.push_back(bool_sub("at_home", &PlcInputs::at_home));
     subs_bool_.push_back(bool_sub("cycle_done", &PlcInputs::cycle_done));
     subs_bool_.push_back(bool_sub("fault", &PlcInputs::fault));
+    subs_bool_.push_back(bool_sub("drive/fault", &PlcInputs::drive_fault));
     phase_sub_ = create_subscription<std_msgs::msg::String>(
         "arm_phase", 10, [this](std_msgs::msg::String::SharedPtr m) {
           in_.ph_pick = (m->data == "pick");
@@ -102,12 +105,14 @@ class PlcBridge : public rclcpp::Node {
   }
 
   void publish(const PlcOutputs& o, bool connected) {
-    std_msgs::msg::Bool run, estop, reset, conn;
+    std_msgs::msg::Bool run, estop, reset, conn, alarm;
     // Fail-safe defaults when not connected: no run permission, E-stop asserted.
     run.data = connected && o.run;
     estop.data = connected ? (o.estop_active || o.estop_latch) : true;
     reset.data = connected && o.reset_cmd;
     conn.data = connected;
+    alarm.data = connected && o.drive_alarm;
+    alarm_pub_->publish(alarm);
     run_pub_->publish(run);
     estop_pub_->publish(estop);
     reset_pub_->publish(reset);
@@ -130,7 +135,7 @@ class PlcBridge : public rclcpp::Node {
   rclcpp::Time next_connect_{0, 0, RCL_ROS_TIME};
   std::string last_state_;
 
-  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr run_pub_, estop_pub_, reset_pub_, conn_pub_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr run_pub_, estop_pub_, reset_pub_, conn_pub_, alarm_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr state_pub_;
   std::vector<rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr> subs_bool_;
   std::vector<rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr> subs_empty_;

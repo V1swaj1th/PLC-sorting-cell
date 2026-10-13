@@ -1,0 +1,10 @@
+# Fails if the firmware library needs heap, exceptions or stdio from the C/C++ runtime.
+execute_process(COMMAND nm -u -C ${LIB} OUTPUT_VARIABLE syms RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+  message(FATAL_ERROR "nm failed on ${LIB}")
+endif()
+string(REGEX MATCHALL "[^\n]*(malloc|calloc|realloc|free|operator new|operator delete|__cxa_throw|__cxa_allocate_exception|printf|puts|fopen)[^\n]*" bad "${syms}")
+if(bad)
+  message(FATAL_ERROR "firmware uses runtime services it must not:\n${bad}")
+endif()
+message(STATUS "firmware library: no heap, exceptions or stdio symbols")

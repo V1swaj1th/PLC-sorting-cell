@@ -31,7 +31,11 @@ header h1 { font-size: 16px; margin: 0; font-weight: 650; letter-spacing: .01em;
 .pill.ready::before, .pill.done::before { background: var(--ok); }
 .pill.running::before { background: var(--accent); animation: blink 1s infinite; }
 .pill.fault::before { background: var(--bad); }
-.pill.waiting::before { background: var(--warn); }
+.pill.waiting::before, .pill.stopping::before, .pill.enabling::before { background: var(--warn); }
+.pill.disabled::before { background: var(--muted); }
+#dstate { text-transform: none; letter-spacing: 0; }
+.bar { display: inline-block; height: 8px; border-radius: 4px; background: var(--accent); vertical-align: middle; }
+.bar.hot { background: var(--bad); }
 @keyframes blink { 50% { opacity: .3; } }
 .meta { color: var(--muted); font-size: 13px; }
 main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; align-items: start; gap: 16px; padding: 16px; max-width: 1400px; margin: 0 auto; }
@@ -91,6 +95,20 @@ label.chk { display: inline-flex; gap: 6px; align-items: center; color: var(--mu
       <h2>Status</h2>
       <div id="msg">Waiting for scene_server...</div>
       <div class="lock">The arm is moving: editing is locked until the cycle ends.</div>
+    </div>
+    <div class="card" id="drivecard">
+      <h2>Servo drive</h2>
+      <div class="row"><span id="dstate" class="pill">-</span><span id="dpeak" class="meta"></span></div>
+      <table id="fe" class="mono" style="margin-top:8px"></table>
+      <div class="row" style="margin-top:8px">
+        <select id="jamj"><option value="1">J1</option><option value="2" selected>J2</option><option value="3">J3</option>
+          <option value="4">J4</option><option value="5">J5</option><option value="6">J6</option></select>
+        <button id="jam" class="small">Jam joint</button>
+        <button id="clear" class="small">Clear jam</button>
+        <button id="dreset" class="small">Reset drive</button>
+      </div>
+      <p class="hint">Fault injection: a jammed joint cannot follow, the following error passes its limit and the
+        drive switches the torque off. With the PLC the alarm is latched there and needs a PLC reset.</p>
     </div>
     <div class="card">
       <h2>Random placement</h2>
@@ -176,6 +194,7 @@ async function poll() {
       if (S) { fixSel(); renderPanel(); if (first) say(S.message || "Scene loaded", S.ok !== false); }
     }
     renderHeader();
+    renderDrive();
     draw();
   } catch (e) { $("seq").textContent = "offline"; $("seq").className = "pill fault"; }
 }
@@ -325,6 +344,31 @@ function renderHeader() {
   $("main").classList.toggle("locked", locked());
   for (const b of document.querySelectorAll("[data-cmd], #addObj, #addBin, #load")) b.disabled = locked();
 }
+function renderDrive() {
+  const card = $("drivecard");
+  if (!snap || !snap.has_drive) { card.style.display = "none"; return; }
+  card.style.display = "";
+  const d = snap.drive || {}, st = d.state || "no data";
+  const word = st.split(" ")[0].toLowerCase();
+  $("dstate").textContent = st;
+  $("dstate").className = "pill " + (word === "running" ? "ready" : word);
+  $("dpeak").textContent = d.fe_peak_mrad ? `peak following error ${d.fe_peak_mrad.toFixed(2)} mrad` : "";
+  const t = $("fe"); t.replaceChildren();
+  (d.fe_mrad || []).forEach((v, j) => {
+    const lim = j < 3 ? 30 : 50, w = Math.min(100, 100 * v / lim);
+    t.append(el("tr", {}, el("td", { text: "J" + (j + 1) }),
+      el("td", { style: "width:60%" }, el("span", { class: "bar" + (v > 0.5 * lim ? " hot" : ""), style: `width:${Math.max(2, w)}%` })),
+      el("td", { style: "text-align:right", text: v.toFixed(2) + " mrad" })));
+  });
+  $("dreset").disabled = !!snap.use_plc;
+  $("dreset").title = snap.use_plc ? "With the PLC, reset from the PLC" : "";
+}
+async function driveAction(action, joint) {
+  const r = await api("/api/drive", { action, joint });
+  say(r.message || "", r.ok);
+  poll();
+}
+
 function renderPanel() {
   const objs = $("objs"); objs.replaceChildren();
   S.objects.forEach((o, i) => {
@@ -430,6 +474,9 @@ $("addBin").addEventListener("click", () => run(`add_container ${$("newBin").val
 $("save").addEventListener("click", () => run(`save ${$("path").value}`));
 $("load").addEventListener("click", () => run(`load ${$("path").value}`));
 $("start").addEventListener("click", async () => { const r = await api("/api/start"); say(r.message, r.ok); poll(); });
+$("jam").addEventListener("click", () => driveAction("jam", +$("jamj").value));
+$("clear").addEventListener("click", () => driveAction("clear"));
+$("dreset").addEventListener("click", () => driveAction("reset"));
 $("reach").addEventListener("change", draw);
 $("lines").addEventListener("change", draw);
 window.addEventListener("resize", resize);

@@ -10,6 +10,7 @@
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/empty.hpp>
+#include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -48,6 +49,8 @@ bool parseDetections(const std::string& text, int& rev, std::vector<CubeTarget>&
 // on joint_states. A cube goes to the container of its colour, or to the gray container.
 //
 // use_plc = false: starts on cell/start, or by itself after start_delay_s when auto_start is true.
+// use_drive = true: publishes targets (position + velocity) on arm/joint_command for joint_drive,
+//                  which publishes the actual joint_states; motion waits for drive/ready.
 // use_plc = true : moves only while the PLC says run && !estop. The motion is ramped to zero
 //                  in 0.3 s when permission is removed and ramped back up on resume. After an
 //                  E-stop the PLC reset must be acknowledged before motion is allowed again.
@@ -59,12 +62,29 @@ class SortingSequencer : public rclcpp::Node {
     declare_parameter("start_delay_s", 3.0);
     declare_parameter("use_plc", false);
     declare_parameter("auto_start", true);
+    declare_parameter("use_drive", false);
+    declare_parameter("cube_mass_kg", 0.5);
     auto_start_ = get_parameter("auto_start").as_bool();
+    use_drive_ = get_parameter("use_drive").as_bool();
+    cube_mass_ = get_parameter("cube_mass_kg").as_double();
     start_delay_ = get_parameter("start_delay_s").as_double();
     use_plc_ = get_parameter("use_plc").as_bool();
     if (use_plc_) estop_ = true;  // fail-safe until the PLC says otherwise
 
-    js_pub_ = create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
+    // With the servo drive the sequencer only sends targets; the drive publishes the actual joint_states.
+    js_pub_ = create_publisher<sensor_msgs::msg::JointState>(use_drive_ ? "arm/joint_command" : "joint_states", 10);
+    payload_pub_ = create_publisher<std_msgs::msg::Float64>("gripper/payload_kg", 10);
+    if (use_drive_) {
+      actual_sub_ = create_subscription<sensor_msgs::msg::JointState>(
+          "joint_states", 10, [this](sensor_msgs::msg::JointState::SharedPtr m) {
+            if (m->position.size() >= 6) {
+              for (int j = 0; j < 6; ++j) q_actual_[j] = m->position[static_cast<size_t>(j)];
+              have_actual_ = true;
+            }
+          });
+      ready_sub_ = create_subscription<std_msgs::msg::Bool>(
+          "drive/ready", 10, [this](std_msgs::msg::Bool::SharedPtr m) { drive_ready_ = m->data; });
+    }
     markers_pub_ = create_publisher<MarkerArray>("sorted_cubes", 10);
     busy_pub_ = create_publisher<std_msgs::msg::Bool>("arm_busy", 10);
     home_pub_ = create_publisher<std_msgs::msg::Bool>("at_home", 10);
@@ -224,6 +244,7 @@ class SortingSequencer : public rclcpp::Node {
 
   bool motionAllowed() const {
     if (state_ != State::RUNNING) return false;
+    if (use_drive_ && !drive_ready_) return false;  // drive off, stopping, re-syncing or faulted
     if (use_plc_) return run_ && !estop_ && !estop_seen_;
     if (started_) return true;
     return auto_start_ && (now() - plan_time_).seconds() >= start_delay_;
@@ -237,10 +258,12 @@ class SortingSequencer : public rclcpp::Node {
                              "PLC run is on but motion is held: plc/estop=%d, E-stop not yet acknowledged by a reset=%d",
                              static_cast<int>(estop_), static_cast<int>(estop_seen_));
       }
-      const double target = allowed ? 1.0 : 0.0;
+      const double target = allowed ? 1.0 : 0.0, old_speed = speed_;
       if (target > speed_) speed_ = std::min(target, speed_ + kDt / kStartTime);
       else speed_ = std::max(target, speed_ - kDt / kStopTime);
-      if (speed_ > 0.0) pos_ += speed_;  // 1 frame per 20 ms tick at full speed
+      // trapezoidal integration (1 frame per 20 ms at full speed): the velocity sent with the
+      // target, path velocity * speed_, then belongs to the same instant as the position
+      pos_ += 0.5 * (old_speed + speed_);
       const double last = static_cast<double>(plan_.q.size() - 1);
       if (pos_ >= last) {
         pos_ = last;
@@ -253,8 +276,12 @@ class SortingSequencer : public rclcpp::Node {
       const size_t i1 = std::min(i0 + 1, plan_.q.size() - 1);
       const double f = pos_ - static_cast<double>(i0);
       q_ = (1.0 - f) * plan_.q[i0] + f * plan_.q[i1];
+      qd_ = ((1.0 - f) * frameVelocity(i0) + f * frameVelocity(i1)) * speed_;
+    } else {
+      qd_.setZero();
     }
     publishJoints();
+    publishPayload();
     if (++tick_ % 2 == 0) publishMarkers();
     if (tick_ % 5 == 0) publishStatus();
   }
@@ -268,13 +295,39 @@ class SortingSequencer : public rclcpp::Node {
     return "idle";
   }
 
+  // Central difference of the plan at frame i [rad/s at full speed].
+  Vector6d frameVelocity(size_t i) const {
+    const size_t a = i > 0 ? i - 1 : 0, b = std::min(i + 1, plan_.q.size() - 1);
+    if (b <= a) return Vector6d::Zero();
+    return (plan_.q[b] - plan_.q[a]) / (kDt * static_cast<double>(b - a));
+  }
+
   void publishJoints() {
     sensor_msgs::msg::JointState msg;
     msg.header.stamp = now();
     msg.name = {"shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint",
                 "wrist_1_joint",      "wrist_2_joint",       "wrist_3_joint"};
     msg.position.assign(q_.data(), q_.data() + 6);
+    if (use_drive_) msg.velocity.assign(qd_.data(), qd_.data() + 6);
     js_pub_->publish(msg);
+  }
+
+  // Mass in the gripper: a cube from its grasp frame until its release frame. The drive's plant
+  // gets it; the controller does not, so the integrators have to reject it.
+  void publishPayload() {
+    bool carrying = false;
+    if (state_ == State::RUNNING) {
+      const int f = static_cast<int>(pos_);
+      for (size_t i = 0; i < cubes_.size(); ++i)
+        carrying = carrying || (plan_.grasp_frame[i] >= 0 && f >= plan_.grasp_frame[i] && f < plan_.release_frame[i]);
+    }
+    if (carrying == carrying_ && tick_ % 50 != 0) return;  // on change, and once a second
+    if (carrying != carrying_)
+      RCLCPP_INFO(get_logger(), "Gripper: %s", carrying ? "cube grasped" : "cube released");
+    carrying_ = carrying;
+    std_msgs::msg::Float64 m;
+    m.data = carrying ? cube_mass_ : 0.0;
+    payload_pub_->publish(m);
   }
 
   void publishStatus() {
@@ -359,7 +412,8 @@ class SortingSequencer : public rclcpp::Node {
         z = kCubeSize / 2.0;
         yaw = 0.0;
       } else if (plan_.grasp_frame[i] >= 0 && frame >= plan_.grasp_frame[i]) {
-        const Eigen::Matrix4d T = forwardKinematics(q_);
+        // with the drive, the carried cube follows the ACTUAL arm, not the commanded one
+        const Eigen::Matrix4d T = forwardKinematics(use_drive_ && have_actual_ ? q_actual_ : q_);
         x = T(0, 3);
         y = T(1, 3);
         z = T(2, 3);
@@ -389,12 +443,19 @@ class SortingSequencer : public rclcpp::Node {
   std::vector<CubeTarget> cubes_;      // the ones in the running plan
   PickPlacePlan plan_;
   Vector6d q_;
+  Vector6d qd_{Vector6d::Zero()};       // target velocity sent with q_ (drive mode)
+  Vector6d q_actual_{Vector6d::Zero()};  // from the drive's joint_states
+  bool use_drive_{false}, drive_ready_{false}, have_actual_{false}, carrying_{false};
+  double cube_mass_{0.5};
   double pos_{0.0};    // fractional frame index into plan_.q
   double speed_{0.0};  // 0..1 playback speed (ramped)
   unsigned long tick_{0};
   rclcpp::Time plan_time_{0, 0, RCL_ROS_TIME};
 
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr js_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr payload_pub_;
+  rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr actual_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr ready_sub_;
   rclcpp::Publisher<MarkerArray>::SharedPtr markers_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr busy_pub_, home_pub_, done_pub_, fault_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr phase_pub_, state_pub_;

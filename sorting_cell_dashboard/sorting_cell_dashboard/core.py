@@ -13,14 +13,16 @@ from sorting_cell_dashboard.page import PAGE
 class DashboardCore:
     """send_command(text) publishes on scene/command, send_start() on cell/start."""
 
-    def __init__(self, send_command, send_start, use_plc=False, timeout=5.0):
+    def __init__(self, send_command, send_start, use_plc=False, timeout=5.0, send_drive=None):
         self._send_command = send_command
         self._send_start = send_start
+        self._send_drive = send_drive  # send_drive(kind, text): kind 'inject' or 'reset'
         self.use_plc = use_plc
         self.timeout = timeout
         self._lock = threading.Lock()
         self._state = None
         self._phase = ''
+        self._drive = {'state': '', 'fe_mrad': [], 'fe_peak_mrad': 0.0}
         self._version = 0
         self._pending = {}
         self._ids = itertools.count(1)
@@ -55,7 +57,41 @@ class DashboardCore:
                 self._phase = text
                 self._version += 1
 
+    def on_drive_state(self, text):
+        with self._lock:
+            if text != self._drive['state']:
+                self._drive['state'] = text
+                self._version += 1
+
+    def on_following_error(self, values):
+        fe = [round(abs(v) * 1e3, 2) for v in values]
+        with self._lock:
+            self._drive['fe_mrad'] = fe
+            if self._drive['state'].startswith('RUNNING') and fe:
+                self._drive['fe_peak_mrad'] = max(self._drive['fe_peak_mrad'], max(fe))
+
     # ---- actions from the browser
+    def drive(self, action, joint=None):
+        """'jam' (joint 1..6), 'clear', or 'reset' (stand-alone only)."""
+        if self._send_drive is None:
+            return {'ok': False, 'message': 'the servo drive is not running (drive:=false)'}
+        if action == 'jam':
+            if not isinstance(joint, int) or not 1 <= joint <= 6:
+                return {'ok': False, 'message': 'joint must be 1 to 6'}
+            self._send_drive('inject', f'jam {joint}')
+            return {'ok': True, 'message': f'joint {joint} jammed: watch the following error trip the drive'}
+        if action == 'clear':
+            self._send_drive('inject', 'clear')
+            return {'ok': True, 'message': 'jam cleared; reset the drive to continue'}
+        if action == 'reset':
+            if self.use_plc:
+                return {'ok': False, 'message': 'with the PLC, reset from the PLC (panel/reset)'}
+            self._send_drive('reset', '')
+            with self._lock:
+                self._drive['fe_peak_mrad'] = 0.0
+            return {'ok': True, 'message': 'drive reset sent'}
+        return {'ok': False, 'message': 'unknown drive action'}
+
     def command(self, cmd):
         cmd = ' '.join(str(cmd).split())
         if not cmd or len(cmd) > 300 or '|' in cmd:
@@ -88,7 +124,8 @@ class DashboardCore:
     def snapshot(self):
         with self._lock:
             return {'version': self._version, 'state': self._state, 'phase': self._phase,
-                    'use_plc': self.use_plc}
+                    'use_plc': self.use_plc, 'has_drive': self._send_drive is not None,
+                    'drive': dict(self._drive)}
 
 
 def _host_allowed(host_header):
@@ -152,6 +189,8 @@ def make_server(core, host, port):
                 return self._send(200, json.dumps(core.command(body.get('cmd', ''))))
             if path == '/api/start':
                 return self._send(200, json.dumps(core.start()))
+            if path == '/api/drive' and isinstance(body, dict):
+                return self._send(200, json.dumps(core.drive(body.get('action', ''), body.get('joint'))))
             return self._send(404, '{"error": "not found"}')
 
     server = ThreadingHTTPServer((host, port), Handler)

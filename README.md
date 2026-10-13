@@ -1,10 +1,12 @@
 # PLC-supervised sorting cell with a from-scratch kinematics controller
 
 A simulated robotic sorting cell structured the way real factory cells are: a **PLC owns the
-sequence and the safety logic**, a PC owns **perception and motion**. A UR5e picks four coloured
-cubes and sorts them into bins. The forward kinematics, Jacobian, inverse kinematics and
-trajectory planner are written from scratch in C++ (Eigen), and everything runs in ROS 2 Jazzy
-with RViz.
+sequence and the safety logic**, a PC owns **perception and motion**, and **servo drives** close
+the joint loops. A UR5e picks coloured cubes and sorts them into bins. The forward kinematics,
+Jacobian, inverse kinematics and trajectory planner are written from scratch in C++ (Eigen); the
+servo firmware (cascaded position/velocity loops, following-error supervision, controlled stop and
+STO) is a ROS-free C++ library driving simulated UR5e joints. Everything runs in ROS 2 Jazzy with
+RViz.
 
 > **Demo video (normal run, E-stop mid-motion, recovery):** _add link here_
 
@@ -14,7 +16,8 @@ with RViz.
 
 | Layer | Implementation | Where |
 |---|---|---|
-| PLC (sequence + safety) | Ladder logic in OpenPLC: self-holding start/stop, normally-closed E-stop loop with latch and reset, start interlocks, cycle state machine | [`plc/`](plc) |
+| PLC (sequence + safety) | Ladder logic in OpenPLC: self-holding start/stop, normally-closed E-stop loop with latch and reset, start interlocks, cycle state machine, latched servo drive alarm | [`plc/`](plc) |
+| Servo drive | ROS-free C++ firmware at 1 kHz: setpoint interpolation, cascaded P/PI with feedforward and anti-windup, following-error trip, supervised stop and STO; simulated UR5e joints with gravity, inertia, friction, gears, encoders and brakes | [`servo_core`](servo_core), [`joint_drive.cpp`](sorting_cell_controller/src/joint_drive.cpp) |
 | Bridge | C++ Modbus TCP master (libmodbus), 20 Hz, fail-safe on link loss | [`sorting_cell_controller/src/plc_bridge.cpp`](sorting_cell_controller/src/plc_bridge.cpp) |
 | Perception | Python/OpenCV: synthetic top-down camera, HSV thresholding, contours, pixel to table coordinates | [`sorting_cell_vision`](sorting_cell_vision) |
 | Motion | C++/Eigen: UR5e FK from DH parameters, geometric Jacobian, adaptive damped-least-squares IK, Cartesian line + slerp planner, trapezoidal velocity profile, pick-and-place sequencer | [`sorting_cell_controller`](sorting_cell_controller) |
@@ -56,8 +59,9 @@ All numbers come from the tools in this repo and can be regenerated.
 | Trapezoidal planner | tool speed 0.250 m/s at the limit, line deviation below 1e-5 m, end error below 3e-7 m; an unreachable goal fails cleanly |
 | Vision, 300 random scenes with noise | 0 misses, worst position error 0.71 mm |
 | Pick-and-place planning, 300 random 4-cube scenes | 300 / 300 planned |
-| PLC ladder on real OpenPLC (`plc/plc_check.py`) | 21 / 21 checks |
-| Bridge against a software PLC (`plc_link_test`) | 30 / 30 checks |
+| PLC ladder on real OpenPLC (`plc/plc_check.py`) | 28 / 28 checks |
+| Bridge against a software PLC (`plc_link_test`) | 39 / 39 checks |
+| Servo firmware + plant (`colcon test --packages-select servo_core`) | 18 / 18 gtests, plus a check that the firmware library uses no heap, exceptions or stdio |
 
 Cycle time for the demo scene: **8.1 s per cube on average** (7.7 to 8.4 s), 34.3 s for the whole
 cycle including the return home. Peak joint speed 1.63 rad/s against the UR5e limit of 3.14.
@@ -119,7 +123,7 @@ then open **http://localhost:8765**, arrange the scene and press **Start sort**
 1. Open the project in [`plc/sorting_cell`](plc/sorting_cell) with the OpenPLC Editor, build and
    upload, then run `plc/plc_setup.sh`. The ladder spec and the register map are in
    [`plc/ladder_spec.md`](plc/ladder_spec.md) and [`plc/register_map.md`](plc/register_map.md).
-2. Check the ladder on its own: `python3 plc/plc_check.py` (expects `21 passed, 0 failed`).
+2. Check the ladder on its own: `python3 plc/plc_check.py` (expects `28 passed, 0 failed`).
 3. Launch the cell:
    ```
    ros2 launch sorting_cell_bringup sorting.launch.py use_plc:=true
@@ -131,9 +135,13 @@ then open **http://localhost:8765**, arrange the scene and press **Start sort**
    ros2 topic pub --once /panel/stop  std_msgs/msg/Empty "{}"
    ros2 topic pub --once /panel/estop std_msgs/msg/Bool "{data: true}"  # press the E-stop
    ros2 topic pub --once /panel/estop std_msgs/msg/Bool "{data: false}" # release it (reset needed)
-   ros2 topic echo /plc/state                                           # IDLE, RUN, PICK, PLACE, DONE, E-STOP, FAULT
+   ros2 topic echo /plc/state                # IDLE, RUN, PICK, PLACE, DONE, E-STOP, FAULT, DRIVE_ALARM
    ```
    After a finished cycle, press reset to re-home and scan again.
+5. Servo fault demo: jam a joint mid-move (dashboard "Jam joint", or
+   `ros2 topic pub --once /drive/inject std_msgs/msg/String "{data: 'jam 2'}"`). The drive trips on
+   following error and switches the torque off, the PLC latches DRIVE_ALARM and drops run. Clear
+   the jam (`'clear'`), press reset, then start: the cycle resumes.
 
 ### Tests and validation
 
@@ -151,7 +159,89 @@ PYTHONPATH=sorting_cell_vision python3 sorting_cell_vision/test/detect_test.py
 PYTHONPATH=sorting_cell_vision python3 sorting_cell_vision/test/scene_codec_test.py
 PYTHONPATH=sorting_cell_teach python3 sorting_cell_teach/test/keymap_test.py
 PYTHONPATH=sorting_cell_dashboard python3 sorting_cell_dashboard/test/core_test.py
+colcon test --packages-select servo_core && colcon test-result --verbose    # servo gtests (from the workspace)
+ros2 run sorting_cell_controller drive_report docs/drive              # servo evidence, then:
+python3 validation/plot_drive.py docs/drive
 ```
+
+## Servo drive layer
+
+Without it, the planner's joint angles would be written straight into `joint_states`: the arm would
+teleport along the plan. With it, the sequencer sends **targets** (position and velocity, 50 Hz),
+a drive closes the joint loops at 1 kHz on simulated joints, and `joint_states` is the **actual**
+arm. The arm lags, settles and can fail like a real one, and the FK check runs on the real state.
+
+```
+sorting_sequencer --50 Hz targets--> joint_drive (ROS wrapper) --> servo_core firmware --torque--> simulated joints
+                  <--drive/ready---                                                   <--encoders--
+plc_bridge --plc/estop, plc/reset--> joint_drive          joint_drive --drive/fault--> plc_bridge --> PLC alarm latch
+```
+
+**Firmware (`servo_core`, no ROS).** Written the way it would be on a drive's microcontroller:
+`float` arithmetic, fixed-size state, no heap, no exceptions, no RTTI, one bounded `step()` per
+control period. A CTest checks that the compiled library needs no heap, exception or stdio symbols,
+and a gtest counts allocations over 10,000 control steps (zero).
+
+- **Setpoint interpolation:** cubic Hermite segments between the 50 Hz targets (continuous
+  position and velocity, one target period of latency), as servo drives do in interpolated mode.
+- **Cascaded loops:** position P with velocity feedforward drives a velocity PI that outputs
+  torque; gravity feedforward from a nominal model (the payload is not in the model, the
+  integrator rejects it). The current loop is taken as ideal.
+- **PID building block:** derivative on the measurement (no kick), first-order filtered,
+  back-calculation anti-windup, output clamp. Also used as a single-loop position PID for the
+  comparison below.
+- **Velocity estimate** from a quantised encoder (4096 counts per motor turn, 101:1 gear) through a
+  200 Hz low-pass filter.
+- **Following-error supervision:** more than 30 mrad (J1-J3) or 50 mrad (J4-J6) for 20 ms trips
+  the drive: torque off (STO) and brakes on in the same cycle, latched until reset.
+- **E-stop = stop category 1:** the sequencer stops along the path in 0.3 s; the drive supervises
+  it with an envelope |v| <= v0 (1 - t / 0.5 s), so the axes stop even if the targets do not, then
+  switches the torque off and applies the brakes at standstill (or at a 1 s timeout). The E-stop
+  goes to the drive directly, not through the planner, like a hardwired STO input. After a reset
+  the drive holds the actual position while the brake opens and moves to the target slowly, so
+  re-enabling never jumps.
+
+**Plant (simulation side).** Per joint: torque limit (150/150/150/28/28/28 Nm), speed limit
+3.14 rad/s, 101:1 gears with reflected rotor inertia, viscous and Coulomb friction with stiction,
+brake, encoder, and the payload. The gravity torque and the inertia each joint sees are computed
+from the current pose with UR's published link masses (independent joint control: the
+off-diagonal coupling and Coriolis terms are not modelled). Fault injection can jam any joint.
+
+**PLC.** `drive/fault` goes to the PLC (coil 26), which latches `drive_alarm` (coil 11): run drops,
+the state shows DRIVE_ALARM and a start is refused until a reset with the drive healthy again. The
+same reset push also resets the drive. See [`plc/ladder_spec.md`](plc/ladder_spec.md).
+
+### Results
+
+| Test | Result |
+|---|---|
+| 0.2 rad shoulder step, P only | 7.1 mrad steady-state error: the shoulder holds the arm against gravity |
+| same, PID | error removed (0.007 mrad), but 17 % overshoot, settles in 0.71 s |
+| same, cascade P/PI | 0 % overshoot, settles (2 %) in 0.29 s, 0.005 mrad error |
+| 1 rad step, PID saturated at 150 Nm | overshoot 29 % with anti-windup, 114 % and a limit cycle without |
+| whole sort cycle, 0.5 kg cube | max following error 5.4 mrad (elbow), other joints at most 3.0 mrad (fault limit 30) |
+| whole sort cycle, 3 kg payload | max following error 6.1 mrad |
+| 3 kg added while holding | peak 3.2 mrad, back under 0.1 mrad in 0.7 s |
+| E-stop at the fastest point of a move | stops along the path in 0.32 s, torque off after 0.37 s |
+| joint jammed mid-move | following-error trip after 77 ms (20 ms of it debounce), torque off in the same cycle |
+
+![Step response](docs/drive/step_response.png)
+
+![Anti-windup](docs/drive/antiwindup.png)
+
+![Tracking over a whole cycle](docs/drive/tracking.png)
+
+![Payload disturbance](docs/drive/disturbance.png)
+
+![E-stop](docs/drive/estop.png)
+
+![Jam and following-error trip](docs/drive/jam.png)
+
+Launch arguments: `drive:=false` puts the planner straight on `joint_states` again (no servo
+layer), `cube_mass_kg:=2.0` changes what the drive feels while carrying. Topics:
+`drive/state`, `drive/ready`, `drive/fault`, `drive/following_error` (rad per joint),
+`drive/inject` (`jam N` / `clear`), `drive/reset` (stand-alone only; with the PLC the PLC reset
+resets the drive).
 
 ## Scene dashboard
 
@@ -173,6 +263,8 @@ rules and the same IK check apply as for a scene file.
 - **IK reachability overlay:** red cells are places the arm cannot reach with the tool pointing down
   (home, hover, grasp height planned with the own IK, 25 mm grid). The whole table lies inside the
   reach; the overlay shows the limit around it and the dead zone next to the base.
+- **Servo drive panel:** drive state, following error per joint against its limit, and fault
+  injection (jam a joint, clear it, reset the drive) for the demo.
 - **Start sort** sends `cell/start`. While the arm moves, editing is locked. With `use_plc:=true`
   the PLC start button decides and the dashboard's Start is disabled.
 - Arrow keys nudge the selected item by 10 mm (Shift: 2 mm), Delete removes it. Save and Load
@@ -340,8 +432,8 @@ wrote. Coil number = 8 x byte + bit of the `%QX` location.
 
 | Direction | Coils | Signals |
 |---|---|---|
-| PLC to ROS (bridge reads) | 1 to 10 | `run`, `estop_active`, `reset_cmd`, `st_idle`, `st_run`, `st_pick`, `st_place`, `st_done`, `estop_latch`, `st_fault` |
-| ROS to PLC (bridge writes) | 16 to 25 | `start_pb`, `stop_pb`, `estop_ok`, `reset_pb`, `at_home`, `cycle_done`, `fault`, `ph_pick`, `ph_place`, `arm_busy` |
+| PLC to ROS (bridge reads) | 1 to 11 | `run`, `estop_active`, `reset_cmd`, `st_idle`, `st_run`, `st_pick`, `st_place`, `st_done`, `estop_latch`, `st_fault`, `drive_alarm` |
+| ROS to PLC (bridge writes) | 16 to 26 | `start_pb`, `stop_pb`, `estop_ok`, `reset_pb`, `at_home`, `cycle_done`, `fault`, `ph_pick`, `ph_place`, `arm_busy`, `drive_fault` |
 
 ## Limitations
 
@@ -353,6 +445,13 @@ wrote. Coil number = 8 x byte + bit of the `%QX` location.
   safety-rated hardware. The 0.3 s stop ramp is a simulation choice, not a stopping category.
 - Teach mode moves along straight lines in Cartesian space with no collision checking, and the gripper step only changes the marker state. It is not PLC-gated.
 - Manipulability dips to 0.021 at the bins closest to the base (see Results).
+- The joint plant is an independent-joint model: gravity and inertia depend on the pose, but the
+  coupling between joints and Coriolis forces are not modelled, link inertia is approximated by
+  point masses, and rotor inertia, friction and brake values are assumed, not manufacturer data.
+  The current loop is ideal. The firmware is written to be portable to a microcontroller but has
+  only run on a PC, against the simulated plant.
+- The controlled stop and STO are simulated behaviour, not a safety function (no safety-rated
+  hardware, no dual channel).
 
 ## Future work
 
@@ -360,5 +459,7 @@ wrote. Coil number = 8 x byte + bit of the `%QX` location.
 - Gazebo or Isaac Sim physics with a real gripper, contact grasping and a moving conveyor.
 - YOLO-based detection to replace colour thresholding, including mixed object types.
 - Live PLC state, cycle count and faults in the scene dashboard.
+- Run `servo_core` on a microcontroller (for example an STM32) in hardware-in-the-loop against the
+  simulated plant, and wrap the drive as a `ros2_control` hardware interface.
 - A real PLC (Mitsubishi, Omron or a Raspberry Pi soft PLC) over Modbus or OPC UA, and a real arm.
 - Manual/auto mode, alarm handling and a dual-channel E-stop in the ladder.

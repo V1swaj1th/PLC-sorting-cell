@@ -13,9 +13,9 @@ HOST = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.1"
 PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 5020
 
 IN = ["start_pb", "stop_pb", "estop_ok", "reset_pb", "at_home", "cycle_done", "fault",
-      "ph_pick", "ph_place", "arm_busy"]                      # coils 16..25 (ROS -> PLC)
+      "ph_pick", "ph_place", "arm_busy", "drive_fault"]       # coils 16..26 (ROS -> PLC)
 OUT = ["lamp", "run", "estop_active", "reset_cmd", "st_idle", "st_run", "st_pick",
-       "st_place", "st_done", "estop_latch", "st_fault"]      # coils 0..10 (PLC -> ROS)
+       "st_place", "st_done", "estop_latch", "st_fault", "drive_alarm"]  # coils 0..11 (PLC -> ROS)
 
 c = ModbusTcpClient(HOST, port=PORT)
 if not c.connect():
@@ -32,10 +32,10 @@ def push():
 
 
 def read():
-    r = c.read_coils(0, count=11)
+    r = c.read_coils(0, count=len(OUT))
     if r.isError():
         sys.exit("read_coils failed: %s" % r)
-    return dict(zip(OUT, r.bits[:11]))
+    return dict(zip(OUT, r.bits[:len(OUT)]))
 
 
 def step(t=0.3):
@@ -54,7 +54,7 @@ def pulse(name):
 def name_of(o):
     if o["estop_active"] or o["estop_latch"]:
         return "E-STOP"
-    for k, n in (("st_fault", "FAULT"), ("st_done", "DONE"), ("st_pick", "PICK"),
+    for k, n in (("drive_alarm", "DRIVE_ALARM"), ("st_fault", "FAULT"), ("st_done", "DONE"), ("st_pick", "PICK"),
                  ("st_place", "PLACE"), ("st_run", "RUN"), ("st_idle", "IDLE")):
         if o[k]:
             return n
@@ -68,11 +68,11 @@ def expect(what, cond):
     failed += (not cond)
 
 
-print("0. Coil write persistence (master-written coils 16..25 must survive PLC scans)")
+print("0. Coil write persistence (master-written coils 16..26 must survive PLC scans)")
 state.update(estop_ok=True, at_home=True)
 step(0.5)
-r = c.read_coils(16, count=10)
-back = dict(zip(IN, r.bits[:10]))
+r = c.read_coils(16, count=len(IN))
+back = dict(zip(IN, r.bits[:len(IN)]))
 expect("coils 16..25 read back as written", back["estop_ok"] and back["at_home"] and not back["start_pb"])
 
 print("1. E-stop loop open -> E-STOP; closing the loop is not enough, reset is needed")
@@ -143,6 +143,26 @@ state["at_home"] = True
 step()
 o = pulse("start_pb")
 expect("start accepted at home", o["run"])
+
+print("9. Servo drive fault: PLC latches drive_alarm")
+state["at_home"] = False
+o = step()
+expect("running before the fault", o["run"])
+state["drive_fault"] = True
+o = step()
+expect("drive_alarm latched, run dropped, state DRIVE_ALARM",
+       o["drive_alarm"] and not o["run"] and name_of(o) == "DRIVE_ALARM")
+o = pulse("reset_pb")
+expect("reset refused while the drive still reports the fault", o["drive_alarm"])
+state["drive_fault"] = False
+o = step()
+expect("alarm stays latched after the drive fault clears", o["drive_alarm"])
+o = pulse("start_pb")
+expect("start refused while the alarm is latched", not o["run"])
+o = pulse("reset_pb")
+expect("reset clears the alarm", not o["drive_alarm"])
+o = pulse("start_pb")
+expect("start accepted again (resume)", o["run"])
 
 # leave the PLC in a safe state
 state.update(estop_ok=False)

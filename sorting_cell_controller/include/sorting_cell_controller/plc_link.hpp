@@ -1,8 +1,8 @@
 #pragma once
 // ROS-free Modbus TCP link to the PLC (libmodbus). See plc/register_map.md for the address map.
 //
-//   coils 0..10   PLC -> ROS  (written by the ladder program, read by this master)
-//   coils 16..25  ROS -> PLC  (written by this master, only ever READ by the ladder program)
+//   coils 0..11   PLC -> ROS  (written by the ladder program, read by this master)
+//   coils 16..26  ROS -> PLC  (written by this master, only ever READ by the ladder program)
 //
 // The two ranges are disjoint, so the PLC scan never overwrites what ROS wrote and vice versa.
 #include <modbus/modbus.h>
@@ -18,21 +18,24 @@ struct PlcInputs {  // ROS -> PLC
   bool start_pb{false}, stop_pb{false}, estop_ok{false}, reset_pb{false};
   bool at_home{false}, cycle_done{false}, fault{false};
   bool ph_pick{false}, ph_place{false}, arm_busy{false};
+  bool drive_fault{false};  // servo drive tripped (following error); the ladder latches drive_alarm
 };
 
 struct PlcOutputs {  // PLC -> ROS
   bool run{false}, estop_active{false}, reset_cmd{false};
   bool st_idle{false}, st_run{false}, st_pick{false}, st_place{false}, st_done{false};
   bool estop_latch{false}, st_fault{false};
+  bool drive_alarm{false};  // latched in the PLC until reset with the drive fault gone
 };
 
 constexpr int kPlcOutBase = 0;    // first PLC-written coil (coil 0 = lamp_out test coil, ignored)
-constexpr int kPlcOutCount = 11;  // coils 0..10
+constexpr int kPlcOutCount = 12;  // coils 0..11
 constexpr int kPlcInBase = 16;    // first ROS-written coil
-constexpr int kPlcInCount = 10;   // coils 16..25
+constexpr int kPlcInCount = 11;   // coils 16..26
 
 inline std::string plcStateName(const PlcOutputs& o) {
   if (o.estop_active || o.estop_latch) return "E-STOP";
+  if (o.drive_alarm) return "DRIVE_ALARM";
   if (o.st_fault) return "FAULT";
   if (o.st_done) return "DONE";
   if (o.st_pick) return "PICK";
@@ -81,8 +84,8 @@ class PlcLink {
   // drops the connection (the caller reconnects) and returns false.
   bool exchange(const PlcInputs& in, PlcOutputs& out) {
     if (!ctx_) return false;
-    uint8_t w[kPlcInCount] = {in.start_pb, in.stop_pb,  in.estop_ok, in.reset_pb, in.at_home,
-                              in.cycle_done, in.fault, in.ph_pick,  in.ph_place, in.arm_busy};
+    uint8_t w[kPlcInCount] = {in.start_pb,   in.stop_pb, in.estop_ok, in.reset_pb, in.at_home,   in.cycle_done,
+                              in.fault,      in.ph_pick, in.ph_place, in.arm_busy, in.drive_fault};
     for (auto& v : w) v = v ? 1 : 0;
     if (modbus_write_bits(ctx_, kPlcInBase, kPlcInCount, w) != kPlcInCount) return fail("write_bits");
     uint8_t r[kPlcOutCount] = {0};
@@ -97,6 +100,7 @@ class PlcLink {
     out.st_done = r[8];
     out.estop_latch = r[9];
     out.st_fault = r[10];
+    out.drive_alarm = r[11];
     return true;
   }
 

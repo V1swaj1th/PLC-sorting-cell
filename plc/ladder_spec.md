@@ -1,7 +1,8 @@
 # Ladder program spec (OpenPLC Editor) - sorting cell
 
 All signals are BOOL. Contact `-| |-` = normal, `-|/|-` = negated. Coil types: ( ) normal, (S) set, (R) reset.
-Keep the three test rungs/variables you already have (start_in, mb_cmd, lamp_out). Add the variables and rungs below.
+In OpenPLC Editor v4 a variable with a Location must have Class `local` (the Location cell is locked for
+other classes).
 
 ## Variables (Name / Class / Type / Location)
 
@@ -9,31 +10,33 @@ PLC-driven (the ladder writes them):
 
 | Name | Class | Type | Location | Modbus coil |
 |---|---|---|---|---|
-| run | output | BOOL | %QX0.1 | 1 |
-| estop_active | output | BOOL | %QX0.2 | 2 |
-| reset_cmd | output | BOOL | %QX0.3 | 3 |
-| st_idle | output | BOOL | %QX0.4 | 4 |
-| st_run | output | BOOL | %QX0.5 | 5 |
-| st_pick | output | BOOL | %QX0.6 | 6 |
-| st_place | output | BOOL | %QX0.7 | 7 |
-| st_done | output | BOOL | %QX1.0 | 8 |
-| estop_latch | output | BOOL | %QX1.1 | 9 |
-| st_fault | output | BOOL | %QX1.2 | 10 |
+| run | local | BOOL | %QX0.1 | 1 |
+| estop_active | local | BOOL | %QX0.2 | 2 |
+| reset_cmd | local | BOOL | %QX0.3 | 3 |
+| st_idle | local | BOOL | %QX0.4 | 4 |
+| st_run | local | BOOL | %QX0.5 | 5 |
+| st_pick | local | BOOL | %QX0.6 | 6 |
+| st_place | local | BOOL | %QX0.7 | 7 |
+| st_done | local | BOOL | %QX1.0 | 8 |
+| estop_latch | local | BOOL | %QX1.1 | 9 |
+| st_fault | local | BOOL | %QX1.2 | 10 |
+| drive_alarm | local | BOOL | %QX1.3 | 11 |
 
 ROS-driven (the bridge writes them; NO rung may ever use them as a coil):
 
 | Name | Class | Type | Location | Modbus coil |
 |---|---|---|---|---|
-| start_pb | output | BOOL | %QX2.0 | 16 |
-| stop_pb | output | BOOL | %QX2.1 | 17 |
-| estop_ok | output | BOOL | %QX2.2 | 18 |
-| reset_pb | output | BOOL | %QX2.3 | 19 |
-| at_home | output | BOOL | %QX2.4 | 20 |
-| cycle_done | output | BOOL | %QX2.5 | 21 |
-| r_fault | output | BOOL | %QX2.6 | 22 |
-| ph_pick | output | BOOL | %QX2.7 | 23 |
-| ph_place | output | BOOL | %QX3.0 | 24 |
-| arm_busy | output | BOOL | %QX3.1 | 25 |
+| start_pb | local | BOOL | %QX2.0 | 16 |
+| stop_pb | local | BOOL | %QX2.1 | 17 |
+| estop_ok | local | BOOL | %QX2.2 | 18 |
+| reset_pb | local | BOOL | %QX2.3 | 19 |
+| at_home | local | BOOL | %QX2.4 | 20 |
+| cycle_done | local | BOOL | %QX2.5 | 21 |
+| r_fault | local | BOOL | %QX2.6 | 22 |
+| ph_pick | local | BOOL | %QX2.7 | 23 |
+| ph_place | local | BOOL | %QX3.0 | 24 |
+| arm_busy | local | BOOL | %QX3.1 | 25 |
+| drive_fault | local | BOOL | %QX3.2 | 26 |
 
 Internal (no location): `interrupted` local BOOL, `can_start` local BOOL.
 
@@ -48,12 +51,24 @@ R5   run  at_home(/)                               -> (S) interrupted         le
 R6   at_home                                       -> (R) interrupted
 R7   at_home  ||  interrupted   (parallel)         -> ( ) can_start
 R8   [ start_pb  can_start ]  ||  [ run ]   (parallel branches, seal-in)
-       then in series: stop_pb(/) estop_latch(/) estop_active(/) r_fault(/) cycle_done(/)
+       then in series: stop_pb(/) estop_latch(/) estop_active(/) r_fault(/) cycle_done(/) drive_alarm(/)
                                                    -> ( ) run
-R9   run(/) estop_active(/) estop_latch(/) r_fault(/) cycle_done(/)  -> ( ) st_idle
+R9   run(/) estop_active(/) estop_latch(/) r_fault(/) cycle_done(/) drive_alarm(/)  -> ( ) st_idle
 R10  run  ph_pick(/)  ph_place(/)                  -> ( ) st_run
 R11  run  ph_pick                                  -> ( ) st_pick
 R12  run  ph_place                                 -> ( ) st_place
 R13  cycle_done                                    -> ( ) st_done
-R14  r_fault                                       -> ( ) st_fault
+R14  r_fault  ||  drive_alarm   (parallel)         -> ( ) st_fault
+R15  drive_fault                                   -> (S) drive_alarm         servo drive tripped
+R16  reset_pb  drive_fault(/)                      -> (R) drive_alarm         acknowledged, drive healthy
 ```
+
+### Servo drive alarm (R15, R16 and the drive_alarm contacts in R8, R9, R14)
+
+The drive trips on a following error, switches its torque off (STO) and reports `drive_fault`. The
+PLC latches `drive_alarm`: the cell stops (R8 drops `run`), shows FAULT, and refuses a start. The
+alarm only clears with a reset while the drive no longer reports the fault. The same reset push
+reaches the drive (`reset_cmd` -> bridge -> drive), the drive re-enables, `drive_fault` falls, and
+R16 clears the alarm during that push. If the cause is still there (a jammed joint), the drive
+trips again and the alarm comes back. R15/R16 sit after R8, so `run` drops one scan after the
+fault: the drive has already switched its torque off by then.

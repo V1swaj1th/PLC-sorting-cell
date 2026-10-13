@@ -10,6 +10,7 @@ from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
     use_plc = LaunchConfiguration('use_plc')
+    drive = LaunchConfiguration('drive')
     xacro_file = PathJoinSubstitution(
         [FindPackageShare('ur_description'), 'urdf', 'ur.urdf.xacro'])
     robot_description = ParameterValue(
@@ -30,6 +31,11 @@ def generate_launch_description():
         DeclareLaunchArgument('auto_start', default_value='false',
                               description='stand-alone only: true starts by itself after 5 s; '
                                           'false waits for Start in the dashboard (cell/start)'),
+        DeclareLaunchArgument('drive', default_value='true',
+                              description='true: servo drive + simulated joints between the planner and '
+                                          'joint_states; false: the planner sets the joint angles directly'),
+        DeclareLaunchArgument('cube_mass_kg', default_value='0.5',
+                              description='mass the drive feels while a cube is carried'),
         DeclareLaunchArgument('dashboard', default_value='true',
                               description='serve the scene dashboard in the browser'),
         DeclareLaunchArgument('dashboard_host', default_value='127.0.0.1',
@@ -45,8 +51,13 @@ def generate_launch_description():
         Node(package='sorting_cell_controller', executable='sorting_sequencer',
              parameters=[{'start_delay_s': 5.0,
                           'use_plc': ParameterValue(use_plc, value_type=bool),
-                          'auto_start': ParameterValue(LaunchConfiguration('auto_start'), value_type=bool)}],
+                          'auto_start': ParameterValue(LaunchConfiguration('auto_start'), value_type=bool),
+                          'use_drive': ParameterValue(drive, value_type=bool),
+                          'cube_mass_kg': ParameterValue(LaunchConfiguration('cube_mass_kg'), value_type=float)}],
              output='screen'),
+        Node(package='sorting_cell_controller', executable='joint_drive',
+             parameters=[{'use_plc': ParameterValue(use_plc, value_type=bool)}],
+             condition=IfCondition(drive), output='screen'),
         Node(package='sorting_cell_controller', executable='plc_bridge',
              parameters=[{'host': LaunchConfiguration('plc_host'),
                           'port': ParameterValue(LaunchConfiguration('plc_port'), value_type=int)}],
@@ -54,7 +65,8 @@ def generate_launch_description():
         Node(package='sorting_cell_dashboard', executable='dashboard_node',
              parameters=[{'host': LaunchConfiguration('dashboard_host'),
                           'port': ParameterValue(LaunchConfiguration('dashboard_port'), value_type=int),
-                          'use_plc': ParameterValue(use_plc, value_type=bool)}],
+                          'use_plc': ParameterValue(use_plc, value_type=bool),
+                          'drive': ParameterValue(drive, value_type=bool)}],
              condition=IfCondition(LaunchConfiguration('dashboard')), output='screen'),
         Node(package='rviz2', executable='rviz2', arguments=['-d', rviz_config]),
     ])
