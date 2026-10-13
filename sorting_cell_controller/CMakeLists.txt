@@ -76,7 +76,13 @@ target_include_directories(plc_bridge PUBLIC
 ament_target_dependencies(plc_bridge rclcpp std_msgs)
 target_link_libraries(plc_bridge ${MODBUS_LIBRARIES})
 
-install(TARGETS fk_demo fk_checker ik_test traj_test cartesian_move_demo sort_plan_test sorting_sequencer plc_link_test plc_bridge
+add_executable(validation_report src/validation_report.cpp)
+target_include_directories(validation_report PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_link_libraries(validation_report Eigen3::Eigen)
+
+install(TARGETS fk_demo fk_checker ik_test traj_test cartesian_move_demo sort_plan_test sorting_sequencer plc_link_test plc_bridge validation_report
   DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
 

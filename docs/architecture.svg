@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 640" width="1000" height="640" role="img" aria-labelledby="t d">
+  <title id="t">System architecture of the PLC-supervised sorting cell</title>
+  <desc id="d">A vision node feeds cube poses to the sorting sequencer. The OpenPLC runtime talks Modbus TCP to the plc_bridge, which exchanges run, E-stop, reset and arm status with the sequencer. The sequencer publishes joint states and markers to robot_state_publisher and RViz.</desc>
+  <style>
+    :root { --bg:#fcfcfb; --card:#ffffff; --ink:#0b0b0b; --muted:#52514e; --line:#8d8c87;
+            --blue:#2a78d6; --orange:#eb6834; --aqua:#1baf7a; --violet:#6250d6; --gray:#b9b8b3; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#1a1a19; --card:#232322; --ink:#f0efec; --muted:#c3c2b7; --line:#8d8c87;
+              --blue:#3987e5; --orange:#d95926; --aqua:#199e70; --violet:#9085e9; --gray:#5a5954; }
+    }
+    text { font-family: Inter, "Segoe UI", Helvetica, Arial, sans-serif; fill: var(--ink); }
+    .bg { fill: var(--bg); }
+    .card { fill: var(--card); stroke-width: 2; rx: 10; }
+    .h { font-size: 16px; font-weight: 700; }
+    .s { font-size: 12.5px; fill: var(--muted); }
+    .b { font-size: 12.5px; }
+    .lbl { font-size: 11px; fill: var(--muted); }
+    .arrow { stroke: var(--line); stroke-width: 1.8; fill: none; }
+    .tag { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8d8c87"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="1000" height="640"/>
+
+  <!-- Vision -->
+  <rect class="card" x="340" y="20" width="300" height="104" style="stroke:var(--violet)"/>
+  <text class="tag" x="356" y="42" style="fill:var(--violet)">PERCEPTION</text>
+  <text class="h" x="356" y="64">vision_node</text>
+  <text class="s" x="356" y="84">Python · OpenCV</text>
+  <text class="b" x="356" y="104">synthetic camera → HSV → cube poses</text>
+
+  <!-- PLC -->
+  <rect class="card" x="20" y="214" width="230" height="226" style="stroke:var(--orange)"/>
+  <text class="tag" x="36" y="236" style="fill:var(--orange)">PLC · SEQUENCE + SAFETY</text>
+  <text class="h" x="36" y="260">OpenPLC runtime</text>
+  <text class="s" x="36" y="280">ladder logic, 14 rungs</text>
+  <text class="b" x="36" y="308">• self-holding start / stop</text>
+  <text class="b" x="36" y="330">• NC E-stop loop + latch + reset</text>
+  <text class="b" x="36" y="352">• start interlocks (at home,</text>
+  <text class="b" x="36" y="370">   no fault, no open E-stop)</text>
+  <text class="b" x="36" y="392">• cycle state: IDLE, RUN, PICK,</text>
+  <text class="b" x="36" y="410">   PLACE, DONE, E-STOP, FAULT</text>
+
+  <!-- Bridge -->
+  <rect class="card" x="330" y="290" width="180" height="120" style="stroke:var(--aqua)"/>
+  <text class="tag" x="346" y="312" style="fill:var(--aqua)">BRIDGE</text>
+  <text class="h" x="346" y="334">plc_bridge</text>
+  <text class="s" x="346" y="354">C++ · libmodbus</text>
+  <text class="b" x="346" y="376">Modbus TCP master</text>
+  <text class="b" x="346" y="394">20 Hz, fail-safe</text>
+
+  <!-- Sequencer -->
+  <rect class="card" x="640" y="190" width="340" height="270" style="stroke:var(--blue)"/>
+  <text class="tag" x="656" y="212" style="fill:var(--blue)">MOTION</text>
+  <text class="h" x="656" y="236">sorting_sequencer</text>
+  <text class="s" x="656" y="256">C++ · Eigen, written from scratch</text>
+  <text class="b" x="656" y="288">• forward kinematics (UR5e DH)</text>
+  <text class="b" x="656" y="310">• geometric Jacobian, manipulability</text>
+  <text class="b" x="656" y="332">• damped least-squares IK</text>
+  <text class="b" x="656" y="354">• Cartesian line + slerp planner</text>
+  <text class="b" x="656" y="376">• trapezoidal velocity profile</text>
+  <text class="b" x="656" y="398">• pick-and-place sequencer</text>
+  <text class="b" x="656" y="420">• ramped stop and resume</text>
+
+  <!-- Output -->
+  <rect class="card" x="640" y="530" width="340" height="80" style="stroke:var(--gray)"/>
+  <text class="tag" x="656" y="552" style="fill:var(--muted)">VISUALIZATION</text>
+  <text class="h" x="656" y="576">robot_state_publisher → RViz</text>
+  <text class="s" x="656" y="596">UR5e model, table, bins, cubes</text>
+
+  <!-- Operator panel -->
+  <rect class="card" x="20" y="520" width="230" height="90" style="stroke:var(--gray)"/>
+  <text class="tag" x="36" y="542" style="fill:var(--muted)">OPERATOR PANEL</text>
+  <text class="h" x="36" y="566">ros2 topic pub</text>
+  <text class="s" x="36" y="586">start · stop · reset · E-stop</text>
+
+  <!-- Arrows -->
+  <path class="arrow" d="M640,72 H810 V190" marker-end="url(#a)"/>
+  <text class="lbl" x="652" y="64">cube_poses · cube_colors</text>
+
+  <path class="arrow" d="M250,350 H330" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text class="lbl" x="256" y="338">Modbus</text>
+  <text class="lbl" x="262" y="368">coils</text>
+
+  <path class="arrow" d="M510,326 H640" marker-end="url(#a)"/>
+  <text class="lbl" x="516" y="318">plc/run · estop · reset</text>
+  <path class="arrow" d="M640,376 H510" marker-end="url(#a)"/>
+  <text class="lbl" x="516" y="394">arm_busy · at_home</text>
+  <text class="lbl" x="516" y="407">cycle_done · fault · phase</text>
+
+  <path class="arrow" d="M810,460 V530" marker-end="url(#a)"/>
+  <text class="lbl" x="820" y="492">joint_states</text>
+  <text class="lbl" x="820" y="506">sorted_cubes</text>
+
+  <path class="arrow" d="M250,565 H420 V410" marker-end="url(#a)"/>
+  <text class="lbl" x="262" y="556">panel/start · stop · reset · estop</text>
+</svg>

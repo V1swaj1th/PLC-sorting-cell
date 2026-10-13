@@ -1,0 +1,161 @@
+# PLC-supervised sorting cell with a from-scratch kinematics controller
+
+A simulated robotic sorting cell structured the way real factory cells are: a **PLC owns the
+sequence and the safety logic**, a PC owns **perception and motion**. A UR5e picks four coloured
+cubes and sorts them into bins. The forward kinematics, Jacobian, inverse kinematics and
+trajectory planner are written from scratch in C++ (Eigen), and everything runs in ROS 2 Jazzy
+with RViz.
+
+> **Demo video (normal run, E-stop mid-motion, recovery):** _add link here_
+
+![Architecture](docs/architecture.svg)
+
+## What is in it
+
+| Layer | Implementation | Where |
+|---|---|---|
+| PLC (sequence + safety) | Ladder logic in OpenPLC: self-holding start/stop, normally-closed E-stop loop with latch and reset, start interlocks, cycle state machine | [`plc/`](plc) |
+| Bridge | C++ Modbus TCP master (libmodbus), 20 Hz, fail-safe on link loss | [`sorting_cell_controller/src/plc_bridge.cpp`](sorting_cell_controller/src/plc_bridge.cpp) |
+| Perception | Python/OpenCV: synthetic top-down camera, HSV thresholding, contours, pixel to table coordinates | [`sorting_cell_vision`](sorting_cell_vision) |
+| Motion | C++/Eigen: UR5e FK from DH parameters, geometric Jacobian, adaptive damped-least-squares IK, Cartesian line + slerp planner, trapezoidal velocity profile, pick-and-place sequencer | [`sorting_cell_controller`](sorting_cell_controller) |
+| Visualization | `robot_state_publisher` + RViz (UR5e, table, bins, cubes; a grasp is the cube marker attached to the tool) | [`sorting_cell_bringup`](sorting_cell_bringup) |
+
+### Why the split looks like this
+
+The PLC runs the deterministic, safety-relevant logic: it decides whether the cell may run, and
+nothing the PC does can override an open E-stop loop. The PC does the work that needs compute:
+finding cubes and planning motion. The ROS side only moves while the PLC says `run` and `!estop`,
+and treats a lost PLC connection as an E-stop.
+
+Design points worth knowing:
+
+- **E-stop is a normally-closed loop** (`estop_ok = 1` means healthy), so a broken wire stops the
+  cell. The ladder latches the stop, and only a reset with the loop closed clears it, like a real
+  cell. The cell powers up in E-STOP until reset.
+- **Interlocks gate the start only.** Start needs: arm at home *or* a cycle that was interrupted
+  mid-way, no fault, E-stop loop closed and latch clear. Once running, the interlocks no longer
+  need the arm at home.
+- **Resume after a stop.** After an E-stop or stop button the arm decelerates to zero, holds, and
+  continues the same trajectory from where it stopped after reset + start.
+- **IK handles singularities with adaptive damping.** The damping factor ramps from 0.01 to 0.1 as
+  the manipulability falls below 0.02, with step clamping, joint-limit clamping and the previous
+  solution as the seed.
+
+## Results
+
+All numbers come from the tools in this repo and can be regenerated.
+
+| Check | Result |
+|---|---|
+| FK vs TF (`fk_checker`), arm held still | max position error 5.8e-11 m, rotation error 0 rad |
+| FK vs TF while moving | max 4.6e-4 m, 1.1e-3 rad. Consistent with about 1 ms of timing skew between joint message and TF stamp; the static result shows the maths itself is exact |
+| IK, targets near the seed (500 each, spread 0.3 / 0.6 / 1.0 rad) | converged 500 / 498 / 496 |
+| IK along a 100-point Cartesian line | 0 failures, 1.0 iterations on average |
+| Trapezoidal planner | tool speed 0.250 m/s at the limit, line deviation below 1e-5 m, end error below 3e-7 m; an unreachable goal fails cleanly |
+| Vision, 300 random scenes with noise | 0 misses, worst position error 0.71 mm |
+| Pick-and-place planning, 300 random 4-cube scenes | 300 / 300 planned |
+| PLC ladder on real OpenPLC (`plc/plc_check.py`) | 21 / 21 checks |
+| Bridge against a software PLC (`plc_link_test`) | 30 / 30 checks |
+
+Cycle time for the demo scene: **8.1 s per cube on average** (7.7 to 8.4 s), 34.3 s for the whole
+cycle including the return home. Peak joint speed 1.63 rad/s against the UR5e limit of 3.14.
+
+![Cycle time per cube](docs/validation/cycle_time.png)
+
+![Manipulability over the cycle](docs/validation/manipulability.png)
+
+The minimum manipulability is 0.021, at the green and blue bins (near the base). That is just
+above the 0.02 level where the IK damping starts, so the cell works but with little margin there.
+Moving those bins further from the base would raise it.
+
+![Transport speed sweep](docs/validation/speed_sweep.png)
+
+Raising the transport speed from 0.25 to 0.40 m/s saves about 4.5 s per cycle, with diminishing
+returns above that. At 1.0 m/s the peak joint speed (3.39 rad/s) exceeds the 3.14 rad/s limit.
+
+## Run it
+
+### Requirements
+
+- ROS 2 Jazzy with `ros-jazzy-ur-description`, RViz, `libmodbus-dev`, `python3-opencv`,
+  `python3-matplotlib` (plots), `pymodbus` (PLC check script only).
+- OpenPLC Runtime v4 ([autonomy-logic/openplc-runtime](https://github.com/autonomy-logic/openplc-runtime))
+  and OpenPLC Editor v4 to compile and upload the ladder program. The Modbus slave plugin must be
+  enabled on port 5020; [`plc/plc_setup.sh`](plc/plc_setup.sh) does this after each upload.
+
+### Build
+
+```
+cd ~/sorting_cell_ws
+colcon build --symlink-install
+source install/setup.bash
+```
+
+### Stand-alone (no PLC)
+
+```
+ros2 launch sorting_cell_bringup sorting.launch.py
+```
+
+### With the PLC
+
+1. Open the project in [`plc/sorting_cell`](plc/sorting_cell) with the OpenPLC Editor, build and
+   upload, then run `plc/plc_setup.sh`. The ladder spec and the register map are in
+   [`plc/ladder_spec.md`](plc/ladder_spec.md) and [`plc/register_map.md`](plc/register_map.md).
+2. Check the ladder on its own: `python3 plc/plc_check.py` (expects `21 passed, 0 failed`).
+3. Launch the cell:
+   ```
+   ros2 launch sorting_cell_bringup sorting.launch.py use_plc:=true
+   ```
+4. Operate it from another shell:
+   ```
+   ros2 topic pub --once /panel/reset std_msgs/msg/Empty "{}"           # clear the power-up E-stop
+   ros2 topic pub --once /panel/start std_msgs/msg/Empty "{}"
+   ros2 topic pub --once /panel/stop  std_msgs/msg/Empty "{}"
+   ros2 topic pub --once /panel/estop std_msgs/msg/Bool "{data: true}"  # press the E-stop
+   ros2 topic pub --once /panel/estop std_msgs/msg/Bool "{data: false}" # release it (reset needed)
+   ros2 topic echo /plc/state                                           # IDLE, RUN, PICK, PLACE, DONE, E-STOP, FAULT
+   ```
+   After a finished cycle, press reset to re-home and scan again.
+
+### Tests and validation
+
+```
+ros2 run sorting_cell_controller ik_test             # Jacobian, IK, singularity handling
+ros2 run sorting_cell_controller traj_test           # velocity profile and Cartesian planner
+ros2 run sorting_cell_controller sort_plan_test      # pick-and-place planning, 300 random scenes
+ros2 run sorting_cell_controller plc_link_test       # bridge vs a software PLC (no PLC needed)
+ros2 run sorting_cell_controller fk_checker          # own FK vs TF (needs a running robot_state_publisher)
+ros2 run sorting_cell_controller validation_report docs/validation
+python3 validation/plot_validation.py docs/validation
+PYTHONPATH=sorting_cell_vision python3 sorting_cell_vision/test/detect_test.py
+```
+
+## Modbus register map
+
+Only coils are used, and the two ranges are disjoint so the PLC scan never overwrites what ROS
+wrote. Coil number = 8 x byte + bit of the `%QX` location.
+
+| Direction | Coils | Signals |
+|---|---|---|
+| PLC to ROS (bridge reads) | 1 to 10 | `run`, `estop_active`, `reset_cmd`, `st_idle`, `st_run`, `st_pick`, `st_place`, `st_done`, `estop_latch`, `st_fault` |
+| ROS to PLC (bridge writes) | 16 to 25 | `start_pb`, `stop_pb`, `estop_ok`, `reset_pb`, `at_home`, `cycle_done`, `fault`, `ph_pick`, `ph_place`, `arm_busy` |
+
+## Limitations
+
+- The camera is synthetic (a rendered image with noise), not a real sensor.
+- "Grasping" is a visual attach of the cube marker to the tool, not physics.
+- There is no collision avoidance and no planning around obstacles. Moves are straight lines in
+  Cartesian space between hover points.
+- The safety logic is a demonstration, not a certified safety system. A real E-stop uses
+  safety-rated hardware. The 0.3 s stop ramp is a simulation choice, not a stopping category.
+- Manipulability dips to 0.021 at the bins closest to the base (see Results).
+
+## Future work
+
+- MoveIt2 for collision-aware planning, compared with the own Cartesian planner.
+- Gazebo or Isaac Sim physics with a real gripper, contact grasping and a moving conveyor.
+- YOLO-based detection to replace colour thresholding, including mixed object types.
+- A dashboard (rqt or web) with live PLC state, cycle count and faults.
+- A real PLC (Mitsubishi, Omron or a Raspberry Pi soft PLC) over Modbus or OPC UA, and a real arm.
+- Manual/auto mode, alarm handling and a dual-channel E-stop in the ladder.

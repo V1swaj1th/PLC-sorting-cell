@@ -43,6 +43,7 @@ struct PickPlacePlan {
   std::vector<Vector6d> q;                 // joint vector per 50 Hz frame
   std::vector<int> grasp_frame;            // per input cube: carried from this frame on (-1 = never)
   std::vector<int> release_frame;          // per input cube: placed from this frame on (-1 = never)
+  std::vector<int> end_frame;              // per input cube: last frame of its pick-and-place (-1 = never)
   std::vector<Eigen::Vector3d> place_pos;  // per input cube
 };
 
@@ -86,6 +87,7 @@ inline PickPlacePlan planPickPlace(const std::vector<CubeTarget>& cubes,
   PickPlacePlan plan;
   plan.grasp_frame.assign(cubes.size(), -1);
   plan.release_frame.assign(cubes.size(), -1);
+  plan.end_frame.assign(cubes.size(), -1);
   plan.place_pos.assign(cubes.size(), Eigen::Vector3d::Zero());
 
   Vector6d q = homeJoints();
@@ -134,6 +136,7 @@ inline PickPlacePlan planPickPlace(const std::vector<CubeTarget>& cubes,
     dwell();
     plan.release_frame[i] = static_cast<int>(plan.q.size());
     if (!move(toolDownPose(place_hover, 0.0), cfg.slow, "retreat from " + tag)) return plan;
+    plan.end_frame[i] = static_cast<int>(plan.q.size()) - 1;
   }
   if (!move(forwardKinematics(homeJoints()), cfg.fast, "return home")) return plan;
   plan.ok = true;
