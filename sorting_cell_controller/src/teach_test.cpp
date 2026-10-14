@@ -1,6 +1,8 @@
 // Tests the teach-and-playback core: jogging, the YAML program file, the program compiler and
 // every error path. No ROS needed. Optional argument: path to write the demo program to.
 #include <cstdio>
+#include <cstdlib>
+#include <fstream>
 #include <string>
 
 #include "sorting_cell_controller/teach.hpp"
@@ -116,6 +118,11 @@ int main(int argc, char** argv) {
            !loadProgram("/nonexistent/dir/x.yaml", dummy, err) && !err.empty());
     expect("saving into a missing directory fails with a message",
            !saveProgram(demo, "/nonexistent/dir/x.yaml", err) && !err.empty());
+    setenv("HOME", "/tmp", 1);
+    TeachProgram from_home;
+    expect("~ is expanded in program paths",
+           saveProgram(demo, "~/teach_test_home.yaml", err) && std::ifstream("/tmp/teach_test_home.yaml").good() &&
+               loadProgram("~/teach_test_home.yaml", from_home, err) && from_home.steps.size() == demo.steps.size());
   }
 
   std::printf("[3] Compiling the demo program from home\n");

@@ -27,6 +27,7 @@
 #include <utility>
 #include <vector>
 
+#include "sorting_cell_controller/path_util.hpp"
 #include "sorting_cell_controller/pick_place.hpp"
 #include "sorting_cell_controller/trajectory.hpp"
 
@@ -285,7 +286,7 @@ inline bool programFromYaml(const std::string& text, TeachProgram& out, std::str
 }
 
 inline bool saveProgram(const TeachProgram& prog, const std::string& path, std::string& err) {
-  std::ofstream f(path);
+  std::ofstream f(expandUser(path));
   if (!f) {
     err = "cannot write '" + path + "'";
     return false;
@@ -300,7 +301,7 @@ inline bool saveProgram(const TeachProgram& prog, const std::string& path, std::
 }
 
 inline bool loadProgram(const std::string& path, TeachProgram& out, std::string& err) {
-  std::ifstream f(path);
+  std::ifstream f(expandUser(path));
   if (!f) {
     err = "cannot read '" + path + "'";
     return false;

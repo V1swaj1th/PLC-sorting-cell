@@ -17,6 +17,7 @@
 #include <utility>
 #include <vector>
 
+#include "sorting_cell_controller/path_util.hpp"
 #include "sorting_cell_controller/pick_place.hpp"
 
 namespace sorting_cell {
@@ -587,14 +588,6 @@ class SceneModel {
     const size_t a = r.find_first_not_of(" \t");
     const size_t b = r.find_last_not_of(" \t\r\n");
     return a == std::string::npos ? "" : r.substr(a, b - a + 1);
-  }
-
-  static std::string expandUser(const std::string& p) {
-    if (!p.empty() && p[0] == '~' && (p.size() == 1 || p[1] == '/')) {
-      const char* h = std::getenv("HOME");
-      if (h) return std::string(h) + p.substr(1);
-    }
-    return p;
   }
 
  private:
