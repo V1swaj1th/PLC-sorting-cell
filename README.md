@@ -8,8 +8,6 @@ servo firmware (cascaded position/velocity loops, following-error supervision, c
 STO) is a ROS-free C++ library driving simulated UR5e joints. Everything runs in ROS 2 Jazzy with
 RViz.
 
-> **Demo video (normal run, E-stop mid-motion, recovery):** _add link here_
-
 ![Architecture](docs/architecture.svg)
 
 ## What is in it
@@ -18,7 +16,7 @@ RViz.
 |---|---|---|
 | PLC (sequence + safety) | Ladder logic in OpenPLC: self-holding start/stop, normally-closed E-stop loop with latch and reset, start interlocks, cycle state machine, latched servo drive alarm | [`plc/`](plc) |
 | Servo drive | ROS-free C++ firmware at 1 kHz: setpoint interpolation, cascaded P/PI with feedforward and anti-windup, following-error trip, supervised stop and STO; simulated UR5e joints with gravity, inertia, friction, gears, encoders and brakes | [`servo_core`](servo_core), [`joint_drive.cpp`](sorting_cell_controller/src/joint_drive.cpp) |
-| Bridge | C++ Modbus TCP master (libmodbus), 20 Hz, fail-safe on link loss | [`sorting_cell_controller/src/plc_bridge.cpp`](sorting_cell_controller/src/plc_bridge.cpp) |
+| Bridge | C++ Modbus TCP master (libmodbus), 20 Hz; reports an E-stop to ROS when the PLC link is lost | [`sorting_cell_controller/src/plc_bridge.cpp`](sorting_cell_controller/src/plc_bridge.cpp) |
 | Perception | Python/OpenCV: synthetic top-down camera, HSV thresholding, contours, pixel to table coordinates | [`sorting_cell_vision`](sorting_cell_vision) |
 | Motion | C++/Eigen: UR5e FK from DH parameters, geometric Jacobian, adaptive damped-least-squares IK, Cartesian line + slerp planner, trapezoidal velocity profile, pick-and-place sequencer | [`sorting_cell_controller`](sorting_cell_controller) |
 | Teach and playback | Jog the tool in Cartesian steps, save named waypoints, record a program and replay it from a YAML file | [`teach_pendant`](sorting_cell_controller/src/teach_pendant.cpp), [`sorting_cell_teach`](sorting_cell_teach) |
@@ -42,8 +40,8 @@ Design points worth knowing:
 - **E-stop is modelled as a normally-closed loop** (`estop_ok = 1` means healthy). The PLC powers
   up with the coil at 0, so the cell starts in E-STOP until a reset. Because Modbus coils keep
   their last value, a lost connection does *not* open the simulated loop on the PLC side; the
-  ladder has no communication watchdog yet (see [AUDIT_REPORT.md](AUDIT_REPORT.md)). The ladder
-  latches the stop, and only a reset with the loop closed clears it.
+  ladder has no communication watchdog yet (see [Simulation scope and limitations](#simulation-scope-and-limitations)).
+  The ladder latches the stop, and only a reset with the loop closed clears it.
 - **Interlocks gate the start only.** Start needs: arm at home *or* a cycle that was interrupted
   mid-way, no fault, E-stop loop closed and latch clear. Once running, the interlocks no longer
   need the arm at home.
@@ -68,7 +66,7 @@ All numbers come from the tools in this repo and can be regenerated.
 | Vision, 400 random scenes with noise (`check_detector.py`) | 0 misses, worst position error 0.66 mm. The renderer and the detector share one camera model, so this checks the image processing, not a camera calibration |
 | Vision robustness (`validation/vision_robustness.py`) | brightness x0.6 to x0.8, colour cast, noise and blur: no misses. Brightness x1.3: orange is lost. Two cubes closer than 40 mm merge into one detection |
 | Pick-and-place planning, 300 random 4-cube scenes | 300 / 300 planned |
-| PLC ladder on OpenPLC (`plc/plc_check.py`) | 28 checks. The drive-alarm rungs are not yet in the committed project in `plc/sorting_cell` (see AUDIT_REPORT.md) |
+| PLC ladder on OpenPLC (`plc/plc_check.py`) | 28 checks over Modbus against the running ladder: E-stop latch and reset, start interlocks, stop, cycle done, fault, drive alarm |
 | Bridge against a software PLC (`plc_link_test`) | 39 / 39 checks |
 | Servo firmware + plant (`colcon test --packages-select servo_core`) | 18 / 18 gtests, plus a check that the firmware library uses no heap, exceptions or stdio |
 
@@ -454,7 +452,7 @@ wrote. Coil number = 8 x byte + bit of the `%QX` location.
 | PLC to ROS (bridge reads) | 1 to 11 | `run`, `estop_active`, `reset_cmd`, `st_idle`, `st_run`, `st_pick`, `st_place`, `st_done`, `estop_latch`, `st_fault`, `drive_alarm` |
 | ROS to PLC (bridge writes) | 16 to 26 | `start_pb`, `stop_pb`, `estop_ok`, `reset_pb`, `at_home`, `cycle_done`, `fault`, `ph_pick`, `ph_place`, `arm_busy`, `drive_fault` |
 
-## Limitations
+## Simulation scope and limitations
 
 - The camera is synthetic (a rendered image with noise), not a real sensor. Containers are part of the cell layout and are not detected by the camera.
 - The camera renders the scene file, not the state of the cell: after a cycle the cubes are back
@@ -462,8 +460,12 @@ wrote. Coil number = 8 x byte + bit of the `%QX` location.
 - The IK is a local solver (damped least squares from a seed). It is reliable for the tool-down
   poses the cell uses, not for arbitrary poses from a distant seed.
 - The planner limits tool speed, not joint speed; joint speeds are checked in tests, not enforced.
-- The E-stop button is a software input written over Modbus, and neither the PLC nor the ROS nodes
-  detect a dead bridge or a dead node yet (see [AUDIT_REPORT.md](AUDIT_REPORT.md)).
+- The E-stop button is a software input written over Modbus. Neither the PLC nor the ROS nodes
+  detect a dead bridge or a dead node: if the bridge process stops, the other nodes keep the last
+  `run`/`estop` values and the PLC keeps its coils.
+- `at_home` (used by the PLC start interlock) and the gripper state follow the planned trajectory,
+  not measured positions; a grasp does not check where the tool actually is.
+- The PLC is OpenPLC (a soft PLC in Docker), not a production PLC.
 - "Grasping" is a visual attach of the cube marker to the tool, not physics.
 - There is no collision avoidance and no planning around obstacles. Moves are straight lines in
   Cartesian space between hover points.
@@ -479,8 +481,15 @@ wrote. Coil number = 8 x byte + bit of the `%QX` location.
 - The controlled stop and STO are simulated behaviour, not a safety function (no safety-rated
   hardware, no dual channel).
 
-## Future work
+## What I would do next
 
+- Communication watchdogs: a heartbeat coil checked by a timer in the ladder, and a timeout on
+  PLC and drive messages in the ROS nodes, so a dead process stops the cell.
+- Measure `at_home` from the joints, and fault the cycle when the actual tool is not at the cube
+  at grasp time; freeze the gripper during a stop.
+- Enforce joint speed and acceleration limits in the planner (re-time segments that exceed them).
+- Integration tests with `launch_testing`: a full cycle and an E-stop in every phase, in CI.
+- Move tuning values (speeds, hover height, stop ramp, following-error limits) into a config file.
 - MoveIt2 for collision-aware planning, compared with the own Cartesian planner.
 - Gazebo or Isaac Sim physics with a real gripper, contact grasping and a moving conveyor.
 - YOLO-based detection to replace colour thresholding, including mixed object types.
@@ -489,3 +498,22 @@ wrote. Coil number = 8 x byte + bit of the `%QX` location.
   simulated plant, and wrap the drive as a `ros2_control` hardware interface.
 - A real PLC (Mitsubishi, Omron or a Raspberry Pi soft PLC) over Modbus or OPC UA, and a real arm.
 - Manual/auto mode, alarm handling and a dual-channel E-stop in the ladder.
+
+## Repository layout
+
+| Path | Contents |
+|---|---|
+| `sorting_cell_controller/` | C++: kinematics, IK, planner, sequencer, scene server, PLC bridge, drive node, teach pendant, tests and report tools |
+| `servo_core/` | ROS-free servo firmware library and simulated UR5e joint plant, with gtests |
+| `sorting_cell_vision/` | Python: synthetic camera and HSV cube detector |
+| `sorting_cell_dashboard/` | Python: browser dashboard for the scene |
+| `sorting_cell_teach/` | Python: keyboard client for teach mode |
+| `sorting_cell_bringup/` | Launch files, RViz configurations, scene files |
+| `plc/` | OpenPLC project (ladder), ladder spec, register map, Modbus setup and check scripts |
+| `validation/` | Plot and robustness scripts that regenerate the figures in `docs/` |
+| `scripts/run_cell.sh` | Starts the cell in a Docker container and opens the dashboard on the host |
+| `.github/workflows/ci.yml` | Build and test on every push (ROS 2 Jazzy) |
+
+## License
+
+MIT, see [LICENSE](LICENSE).
