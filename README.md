@@ -14,6 +14,10 @@ and is visualised in RViz.
 
 ![Architecture](docs/architecture.svg)
 
+[![Demo: normal cycle, E-stop and recovery, drive fault](docs/demo.gif)](https://www.youtube.com/watch?v=sWCEb_UeZGk)
+
+*Demo (2 min): sorting cycle, E-stop and safe resume, drive fault and recovery.*
+
 ## Results at a glance
 
 | Area | Result | Reproduce with |
