@@ -1,4 +1,4 @@
-"""Run: PYTHONPATH=sorting_cell_teach python3 sorting_cell_teach/test/keymap_test.py"""
+"""Run: PYTHONPATH=sorting_cell_teach python3 sorting_cell_teach/test/check_keymap.py"""
 import sys
 
 from sorting_cell_teach.keymap import LINEAR_STEPS, build_command, key_to_action

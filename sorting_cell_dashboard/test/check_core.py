@@ -1,4 +1,4 @@
-"""Run: PYTHONPATH=sorting_cell_dashboard python3 sorting_cell_dashboard/test/core_test.py"""
+"""Run: PYTHONPATH=sorting_cell_dashboard python3 sorting_cell_dashboard/test/check_core.py"""
 import json
 import sys
 import threading

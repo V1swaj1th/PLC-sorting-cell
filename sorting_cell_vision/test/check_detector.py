@@ -1,4 +1,4 @@
-"""Run: PYTHONPATH=sorting_cell_vision python3 sorting_cell_vision/test/detect_test.py"""
+"""Run: PYTHONPATH=sorting_cell_vision python3 sorting_cell_vision/test/check_detector.py"""
 import math
 import sys
 

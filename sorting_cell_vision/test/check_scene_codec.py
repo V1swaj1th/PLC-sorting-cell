@@ -1,4 +1,4 @@
-"""Run: PYTHONPATH=sorting_cell_vision python3 sorting_cell_vision/test/scene_codec_test.py <scene_config.yaml>
+"""Run: PYTHONPATH=sorting_cell_vision python3 sorting_cell_vision/test/check_scene_codec.py <scene_config.yaml>
 The YAML is written by the C++ scene_test (so this checks the real C++ output)."""
 import json
 import sys
