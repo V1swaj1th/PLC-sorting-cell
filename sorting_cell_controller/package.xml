@@ -21,6 +21,9 @@
   <depend>libmodbus-dev</depend>
   <depend>servo_core</depend>
 
+  <test_depend>ament_cmake_gtest</test_depend>
+  <test_depend>ur_description</test_depend>
+
   <export>
     <build_type>ament_cmake</build_type>
   </export>

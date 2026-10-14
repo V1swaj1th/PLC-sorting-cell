@@ -5,12 +5,14 @@
 
 using namespace sorting_cell;
 
-static void check(const std::vector<CubeTarget>& cubes, bool verbose) {
+// Returns true when the plan exists, stays within the joint limits and the UR5e joint speed limit,
+// and reaches every grasp and drop place.
+static bool check(const std::vector<CubeTarget>& cubes, bool verbose) {
   const PickPlaceConfig cfg;
   const PickPlacePlan plan = planPickPlace(cubes, cfg);
   if (!plan.ok) {
     std::printf("PLAN FAILED: %s\n", plan.error.c_str());
-    return;
+    return false;
   }
   double max_qd = 0.0, max_jump = 0.0, min_w = 1e9, max_grasp_err = 0.0, max_place_err = 0.0;
   bool in_limits = true;
@@ -46,6 +48,7 @@ static void check(const std::vector<CubeTarget>& cubes, bool verbose) {
                 "final joint distance from home %.1e rad\n",
                 max_grasp_err, max_place_err, e_home.cwiseAbs().maxCoeff());
   }
+  return in_limits && max_qd < 3.14 && max_grasp_err < 1e-4 && max_place_err < 1e-4 && e_home.cwiseAbs().maxCoeff() < 1e-4;
 }
 
 int main() {
@@ -55,7 +58,7 @@ int main() {
                                          {"blue", {-0.58, -0.10, 0.02}, 1.0},
                                          {"yellow", {-0.62, 0.25, 0.02}, 0.3}};
   std::printf("[1] demo scene\n");
-  check(scene, true);
+  const bool demo_ok = check(scene, true);
 
   // Random scenes: 4 cubes, one per colour, random order, positions and yaw
   std::mt19937 rng(7);
@@ -73,12 +76,10 @@ int main() {
       for (const auto& o : cs) far = far && (c.p - o.p).norm() > 0.09;
       if (far) cs.push_back(c);
     }
-    const PickPlacePlan p = planPickPlace(cs);
-    if (!p.ok) {
-      ++fails;
-      if (fails <= 3) std::printf("    fail %d: %s\n", fails, p.error.c_str());
-    }
+    if (!check(cs, false)) ++fails;
   }
   std::printf("[2] random 4-cube scenes: %d/%d planned, %d failed\n", N - fails, N, fails);
-  return 0;
+  const bool ok = demo_ok && fails == 0;
+  std::printf("%s\n", ok ? "PASS" : "FAIL");
+  return ok ? 0 : 1;
 }

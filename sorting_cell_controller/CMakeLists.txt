@@ -141,4 +141,22 @@ install(TARGETS fk_demo fk_checker ik_test traj_test cartesian_move_demo sort_pl
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY programs/ DESTINATION share/${PROJECT_NAME}/programs)
 
+if(BUILD_TESTING)
+  # gtest suite: FK against the official UR5e joint chain, Jacobian, IK, profile, planner
+  find_package(ament_cmake_gtest REQUIRED)
+  find_package(ur_description QUIET)
+  ament_add_gtest(test_kinematics test/test_kinematics.cpp TIMEOUT 300)
+  target_include_directories(test_kinematics PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(test_kinematics Eigen3::Eigen ${YAML_CPP_TARGET})
+  if(ur_description_FOUND)
+    target_compile_definitions(test_kinematics PRIVATE
+      UR_KINEMATICS_YAML="${ur_description_DIR}/../config/ur5e/default_kinematics.yaml")
+  endif()
+  # stand-alone check programs: each exits non-zero when one of its checks fails
+  foreach(check ik_test traj_test sort_plan_test scene_test teach_test plc_link_test)
+    add_test(NAME ${check} COMMAND ${check})
+    set_tests_properties(${check} PROPERTIES TIMEOUT 600)
+  endforeach()
+endif()
+
 ament_package()

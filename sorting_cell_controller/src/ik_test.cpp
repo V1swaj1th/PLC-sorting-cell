@@ -33,6 +33,7 @@ int main() {
   q_home << 0.0, -M_PI / 2, M_PI / 2, -M_PI / 2, -M_PI / 2, 0.0;
   std::mt19937 rng(42);
   const IkOptions opt;
+  int failures = 0;  // checks with a pass criterion; the rest of the output is a report
 
   // 1. Jacobian vs finite differences
   double max_jac_err = 0.0;
@@ -41,6 +42,7 @@ int main() {
     max_jac_err = std::max(max_jac_err, (geometricJacobian(q) - numericJacobian(q)).cwiseAbs().maxCoeff());
   }
   std::printf("[1] Jacobian vs finite difference, 200 poses: max abs diff = %.2e\n", max_jac_err);
+  failures += max_jac_err > 1e-6;
 
   // 2. IK on reachable targets: far seed (home) and near seed (true + noise)
   const int N = 500;
@@ -90,6 +92,7 @@ int main() {
     std::printf("[3] 100-point Cartesian line (+0.20 m x, -0.10 m z): failures %d, mean iters %.1f, "
                 "max joint jump %.4f rad, min manipulability %.4f\n",
                 fails, static_cast<double>(iters) / steps, max_jump, min_w);
+    failures += fails > 0;
   }
 
   // 4. Approaching a wrist singularity (wrist_2 -> 0 aligns the wrist axes).
@@ -107,6 +110,7 @@ int main() {
       const Matrix6d J = geometricJacobian(q);
       std::printf("    wrist_2 = %.3f rad: w = %.1e, undamped step = %.2e rad, adaptive DLS step = %.2e rad\n",
                   q5, manipulability(J), dlsStep(J, e, undamped).norm(), dlsStep(J, e, opt).norm());
+      failures += dlsStep(J, e, opt).norm() > 0.2;
     }
   }
 
@@ -119,6 +123,7 @@ int main() {
     for (int i = 0; i < 6; ++i) in_limits = in_limits && r.q[i] >= kQMin[i] && r.q[i] <= kQMax[i];
     std::printf("[5] unreachable target (+2 m): converged=%d, iterations=%d, final pos err %.3f m, "
                 "joints in limits=%d\n", r.converged, r.iterations, r.pos_err, in_limits);
+    failures += r.converged || !in_limits;
   }
 
   // 6. Timing (near seed)
@@ -138,5 +143,6 @@ int main() {
     const double us = std::chrono::duration<double, std::micro>(t1 - t0).count() / M;
     std::printf("[6] near-seed solve time: %.1f us per IK (converged %d/%d)\n", us, ok, M);
   }
-  return 0;
+  std::printf("%s (%d failed checks)\n", failures ? "FAIL" : "PASS", failures);
+  return failures ? 1 : 0;
 }

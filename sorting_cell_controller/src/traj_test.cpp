@@ -41,6 +41,7 @@ static void profileCheck(double v, double a) {
 }
 
 int main() {
+  int failures = 0;  // checks with a pass criterion; the rest of the output is a report
   // 1. Velocity profile: trapezoid (long path) and triangular (short path / high v_max)
   profileCheck(0.5, 2.0);
   profileCheck(2.0, 1.0);
@@ -100,6 +101,8 @@ int main() {
                 g.name.c_str(), tr.q.size(), (tr.q.size() - 1) * dt, e.head<3>().norm(),
                 e.tail<3>().norm(), max_dev, max_lin, lim.v_lin, max_ang, lim.v_ang, max_qd,
                 max_qdd, min_w, in_limits);
+    failures += e.head<3>().norm() > 1e-4 || e.tail<3>().norm() > 1e-3 || max_dev > 1e-4 || !in_limits ||
+                max_lin > lim.v_lin * 1.001 || max_ang > lim.v_ang * 1.001;
     q_start = tr.q.back();
   }
 
@@ -107,18 +110,22 @@ int main() {
   {
     const JointTrajectory tr = planCartesianMove(q_home, offsetPose(T_home, 0, 0, 0, 0.8), lim, dt);
     std::printf("[3] pure rotation 0.8 rad: ok=%d, samples=%zu\n", tr.ok, tr.q.size());
+    failures += !tr.ok;
   }
 
   // 4. Degenerate move (goal == start)
   {
     const JointTrajectory tr = planCartesianMove(q_home, T_home, lim, dt);
     std::printf("[4] zero-length move: ok=%d, samples=%zu\n", tr.ok, tr.q.size());
+    failures += !tr.ok;
   }
 
   // 5. Unreachable goal must fail cleanly, not crash or hang
   {
     const JointTrajectory tr = planCartesianMove(q_home, offsetPose(T_home, 2.0, 0, 0, 0.0), lim, dt);
     std::printf("[5] unreachable goal (+2 m): ok=%d, fail_index=%d\n", tr.ok, tr.fail_index);
+    failures += tr.ok;
   }
-  return 0;
+  std::printf("%s (%d failed checks)\n", failures ? "FAIL" : "PASS", failures);
+  return failures ? 1 : 0;
 }
