@@ -3,7 +3,7 @@
   <name>sorting_cell_vision</name>
   <version>0.1.0</version>
   <description>Synthetic top-down camera and HSV cube detector for the sorting cell</description>
-  <maintainer email="viswajithmanthripragada44@gmail.com">vj</maintainer>
+  <maintainer email="viswajithmanthripragada44@gmail.com">Viswajith</maintainer>
   <license>MIT</license>
 
   <exec_depend>rclpy</exec_depend>

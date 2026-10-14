@@ -3,7 +3,7 @@
   <name>sorting_cell_dashboard</name>
   <version>0.1.0</version>
   <description>Browser dashboard for the sorting cell scene: drag and click placement, colours, random layouts, IK reachability, start</description>
-  <maintainer email="viswajithmanthripragada44@gmail.com">vj</maintainer>
+  <maintainer email="viswajithmanthripragada44@gmail.com">Viswajith</maintainer>
   <license>MIT</license>
 
   <exec_depend>rclpy</exec_depend>

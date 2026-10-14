@@ -12,7 +12,7 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='vj',
+    maintainer='Viswajith',
     maintainer_email='viswajithmanthripragada44@gmail.com',
     description='Synthetic camera and HSV cube detector',
     license='MIT',

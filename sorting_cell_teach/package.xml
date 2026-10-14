@@ -3,7 +3,7 @@
   <name>sorting_cell_teach</name>
   <version>0.1.0</version>
   <description>Keyboard client for the teach pendant (jog, save waypoints, record and play programs)</description>
-  <maintainer email="viswajithmanthripragada44@gmail.com">vj</maintainer>
+  <maintainer email="viswajithmanthripragada44@gmail.com">Viswajith</maintainer>
   <license>MIT</license>
 
   <exec_depend>rclpy</exec_depend>

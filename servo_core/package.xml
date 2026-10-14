@@ -3,7 +3,7 @@
   <name>servo_core</name>
   <version>0.1.0</version>
   <description>ROS-free servo drive firmware (PID, cascaded position-velocity loop, drive state machine) and a simulated UR5e joint plant</description>
-  <maintainer email="viswajithmanthripragada44@gmail.com">vj</maintainer>
+  <maintainer email="viswajithmanthripragada44@gmail.com">Viswajith</maintainer>
   <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
