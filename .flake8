@@ -1,0 +1,6 @@
+[flake8]
+max-line-length = 120
+exclude = .git,build,install,log,_to_review
+# page.py is the dashboard's HTML/JavaScript held in a Python string
+per-file-ignores =
+    sorting_cell_dashboard/sorting_cell_dashboard/page.py:E501

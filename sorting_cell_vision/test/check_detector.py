@@ -40,8 +40,10 @@ for name in colors:
     d = detect_cubes(render_scene([(name, -0.5, 0.0, 0.3)], noise=6.0, seed=7))
     single += (len(d) == 1 and d[0]["color"] == name)
 
-print(f"{trials} random scenes (3-8 cubes, 7 colours, noise): {misses} misses, worst position error "
-      f"{worst * 1000:.2f} mm, yaw error mean {math.degrees(np.mean(yaw_errs)):.2f} deg / worst {math.degrees(worst_yaw):.2f} deg; single cubes: {single}/{len(colors)}")
+print(f"{trials} random scenes (3-8 cubes, 7 colours, noise): {misses} misses, "
+      f"worst position error {worst * 1000:.2f} mm, "
+      f"yaw error mean {math.degrees(np.mean(yaw_errs)):.2f} deg / worst {math.degrees(worst_yaw):.2f} deg; "
+      f"single cubes: {single}/{len(colors)}")
 ok = misses == 0 and worst < 0.002 and worst_yaw < math.radians(5) and single == len(colors)
 print("PASS" if ok else "FAIL")
 sys.exit(0 if ok else 1)

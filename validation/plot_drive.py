@@ -44,7 +44,7 @@ def step(d, m):
         settle = f'{mm["settle_s"]:.2f} s' if mm["settle_s"] >= 0 else "not within 2.5 s"
         ax.plot(s["t"], [v / 0.2 for v in s[k]], color=SERIES[i], zorder=3 + i,
                 label=f'{lab}: overshoot {mm["overshoot_pct"]:.1f} %, settles {settle}, '
-                      f'error {mm["ss_error_rad"] * 1e3:.3f} mrad')
+                f'error {mm["ss_error_rad"] * 1e3:.3f} mrad')
     ax.set_xlim(0, 1.5)
     ax.set_ylim(0, 1.25)
     ax.set_xlabel("time after the step [s]")
@@ -138,7 +138,8 @@ def estop(d, m):
         ax.axvline(0, color=MUTED, lw=1, ls="--")
         ax.axvline(sto, color=MUTED, lw=1, ls=":")
     ax1.annotate("E-stop", (0, ax1.get_ylim()[1]), xytext=(4, -12), textcoords="offset points", color=MUTED, fontsize=9)
-    ax1.annotate("STO + brakes", (sto, ax1.get_ylim()[1]), xytext=(4, -12), textcoords="offset points", color=MUTED, fontsize=9)
+    ax1.annotate("STO + brakes", (sto, ax1.get_ylim()[1]), xytext=(4, -12), textcoords="offset points",
+                 color=MUTED, fontsize=9)
     ax1.set_title(f"E-stop at full speed: path stop, standstill after {em['standstill_after_s']:.2f} s, "
                   f"torque off after {sto:.2f} s")
     ax1.set_ylabel("joint velocity [rad/s]")
@@ -162,11 +163,13 @@ def jam(d, m):
     fig, ax = plt.subplots(figsize=(9, 3.8))
     ax.plot(tt, [abs(s[f"fe{j}"][i]) * 1e3 for i in keep], color=SERIES[j], label=f"|following error| {JOINTS[j]}")
     ax.axhline(lim, color=MUTED, lw=1, ls="--")
-    ax.annotate(f"fault limit {lim} mrad", (tt[0], lim), xytext=(4, 4), textcoords="offset points", color=MUTED, fontsize=9)
+    ax.annotate(f"fault limit {lim} mrad", (tt[0], lim), xytext=(4, 4), textcoords="offset points",
+                color=MUTED, fontsize=9)
     ax.axvline(0, color=MUTED, lw=1, ls=":")
     ax.axvline(jm["fault_after_s"], color=MUTED, lw=1, ls=":")
     ax.annotate("jam", (0, 0), xytext=(4, 4), textcoords="offset points", color=MUTED, fontsize=9)
-    ax.annotate("fault: STO", (jm["fault_after_s"], 0), xytext=(4, 4), textcoords="offset points", color=MUTED, fontsize=9)
+    ax.annotate("fault: STO", (jm["fault_after_s"], 0), xytext=(4, 4), textcoords="offset points",
+                color=MUTED, fontsize=9)
     ax.set_title(f"{JOINTS[j]} jammed mid-move: fault after {jm['fault_after_s'] * 1e3:.0f} ms (incl. 20 ms debounce)")
     ax.set_ylabel("mrad")
     ax.set_xlim(-0.2, 0.3)
