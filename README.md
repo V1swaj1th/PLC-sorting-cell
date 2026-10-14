@@ -28,15 +28,22 @@ RViz.
 ### Why the split looks like this
 
 The PLC runs the deterministic, safety-relevant logic: it decides whether the cell may run, and
-nothing the PC does can override an open E-stop loop. The PC does the work that needs compute:
-finding cubes and planning motion. The ROS side only moves while the PLC says `run` and `!estop`,
-and treats a lost PLC connection as an E-stop.
+the ROS side only moves while the PLC says `run` and `!estop`. The PC does the work that needs
+compute: finding cubes and planning motion. When the bridge loses its Modbus connection it reports
+an E-stop to the other nodes.
+
+In this simulation the E-stop "loop" is a Modbus coil (`estop_ok`) that the bridge writes from the
+operator panel topic `panel/estop`, so the E-stop button itself is a software input on the PC; the
+PLC latch, the reset rule and the gating of the motion are real. In a real cell the E-stop would be
+a hardwired input of a safety relay or safety PLC, outside any software.
 
 Design points worth knowing:
 
-- **E-stop is a normally-closed loop** (`estop_ok = 1` means healthy), so a broken wire stops the
-  cell. The ladder latches the stop, and only a reset with the loop closed clears it, like a real
-  cell. The cell powers up in E-STOP until reset.
+- **E-stop is modelled as a normally-closed loop** (`estop_ok = 1` means healthy). The PLC powers
+  up with the coil at 0, so the cell starts in E-STOP until a reset. Because Modbus coils keep
+  their last value, a lost connection does *not* open the simulated loop on the PLC side; the
+  ladder has no communication watchdog yet (see [AUDIT_REPORT.md](AUDIT_REPORT.md)). The ladder
+  latches the stop, and only a reset with the loop closed clears it.
 - **Interlocks gate the start only.** Start needs: arm at home *or* a cycle that was interrupted
   mid-way, no fault, E-stop loop closed and latch clear. Once running, the interlocks no longer
   need the arm at home.
@@ -52,19 +59,24 @@ All numbers come from the tools in this repo and can be regenerated.
 
 | Check | Result |
 |---|---|
-| FK vs TF (`fk_checker`), arm held still | max position error 5.8e-11 m, rotation error 0 rad |
-| FK vs TF while moving | max 4.6e-4 m, 1.1e-3 rad. Consistent with about 1 ms of timing skew between joint message and TF stamp; the static result shows the maths itself is exact |
-| IK, targets near the seed (500 each, spread 0.3 / 0.6 / 1.0 rad) | converged 500 / 498 / 496 |
+| FK vs the official UR5e joint chain (`kinematics_report`, 20,000 random joint vectors) | max position error 2.2e-10 m, rotation error 6.2e-10 rad |
+| FK vs TF from `robot_state_publisher` (`fk_checker`, measured on a live run, arm still) | max position error 5.8e-11 m |
+| IK, tool-down poses over the table, seeded from home (`kinematics_report`) | 2000 / 2000 converged |
+| IK, random joint vectors anywhere in the joint limits | 91 % converge from a seed within ~0.1 rad, 76 % from the home pose (a local solver, not a global one); near the wrist or elbow singularity only 27 % / 11 % reach the 1e-5 m tolerance within 500 iterations, but the residual stays below 1 mm |
 | IK along a 100-point Cartesian line | 0 failures, 1.0 iterations on average |
 | Trapezoidal planner | tool speed 0.250 m/s at the limit, line deviation below 1e-5 m, end error below 3e-7 m; an unreachable goal fails cleanly |
-| Vision, 300 random scenes with noise | 0 misses, worst position error 0.71 mm |
+| Vision, 400 random scenes with noise (`check_detector.py`) | 0 misses, worst position error 0.66 mm. The renderer and the detector share one camera model, so this checks the image processing, not a camera calibration |
+| Vision robustness (`validation/vision_robustness.py`) | brightness x0.6 to x0.8, colour cast, noise and blur: no misses. Brightness x1.3: orange is lost. Two cubes closer than 40 mm merge into one detection |
 | Pick-and-place planning, 300 random 4-cube scenes | 300 / 300 planned |
-| PLC ladder on real OpenPLC (`plc/plc_check.py`) | 28 / 28 checks |
+| PLC ladder on OpenPLC (`plc/plc_check.py`) | 28 checks. The drive-alarm rungs are not yet in the committed project in `plc/sorting_cell` (see AUDIT_REPORT.md) |
 | Bridge against a software PLC (`plc_link_test`) | 39 / 39 checks |
 | Servo firmware + plant (`colcon test --packages-select servo_core`) | 18 / 18 gtests, plus a check that the firmware library uses no heap, exceptions or stdio |
 
-Cycle time for the demo scene: **8.1 s per cube on average** (7.7 to 8.4 s), 34.3 s for the whole
-cycle including the return home. Peak joint speed 1.63 rad/s against the UR5e limit of 3.14.
+Planned cycle time for the demo scene (length of the planned trajectory): **8.1 s per cube on
+average** (7.7 to 8.4 s), 34.3 s for the whole cycle including the return home; with the servo drive
+in the loop the simulated cycle takes 34.6 s. Peak joint speed 1.63 rad/s against the UR5e limit of
+3.14. The planner limits Cartesian speed only; joint speeds are checked afterwards, not enforced
+(over 1000 random scenes the highest was 2.97 rad/s).
 
 ![Cycle time per cube](docs/validation/cycle_time.png)
 
@@ -93,6 +105,7 @@ returns above that. At 1.0 m/s the peak joint speed (3.39 rad/s) exceeds the 3.1
 
 ```
 cd ~/sorting_cell_ws
+rosdep install --from-paths src --ignore-src -y
 colcon build --symlink-install
 source install/setup.bash
 ```
@@ -145,7 +158,13 @@ then open **http://localhost:8765**, arrange the scene and press **Start sort**
 
 ### Tests and validation
 
+`colcon test` runs every automated test (gtests, the check programs below and the Python checks);
+the same runs in CI on each push (`.github/workflows/ci.yml`).
+
 ```
+colcon test && colcon test-result --verbose
+ros2 run sorting_cell_controller kinematics_report $(ros2 pkg prefix ur_description)/share/ur_description/config/ur5e/default_kinematics.yaml
+python3 validation/vision_robustness.py
 ros2 run sorting_cell_controller ik_test             # Jacobian, IK, singularity handling
 ros2 run sorting_cell_controller traj_test           # velocity profile and Cartesian planner
 ros2 run sorting_cell_controller sort_plan_test      # pick-and-place planning, 300 random scenes
@@ -155,10 +174,10 @@ ros2 run sorting_cell_controller fk_checker          # own FK vs TF (needs a run
 ros2 run sorting_cell_controller validation_report docs/validation
 python3 validation/plot_validation.py docs/validation
 ros2 run sorting_cell_controller scene_test           # scene rules, matching, gray container, edit commands, random placement
-PYTHONPATH=sorting_cell_vision python3 sorting_cell_vision/test/detect_test.py
-PYTHONPATH=sorting_cell_vision python3 sorting_cell_vision/test/scene_codec_test.py
-PYTHONPATH=sorting_cell_teach python3 sorting_cell_teach/test/keymap_test.py
-PYTHONPATH=sorting_cell_dashboard python3 sorting_cell_dashboard/test/core_test.py
+PYTHONPATH=sorting_cell_vision python3 sorting_cell_vision/test/check_detector.py
+PYTHONPATH=sorting_cell_vision python3 sorting_cell_vision/test/check_scene_codec.py
+PYTHONPATH=sorting_cell_teach python3 sorting_cell_teach/test/check_keymap.py
+PYTHONPATH=sorting_cell_dashboard python3 sorting_cell_dashboard/test/check_core.py
 colcon test --packages-select servo_core && colcon test-result --verbose    # servo gtests (from the workspace)
 ros2 run sorting_cell_controller drive_report docs/drive              # servo evidence, then:
 python3 validation/plot_drive.py docs/drive
@@ -218,11 +237,11 @@ same reset push also resets the drive. See [`plc/ladder_spec.md`](plc/ladder_spe
 | 0.2 rad shoulder step, P only | 7.1 mrad steady-state error: the shoulder holds the arm against gravity |
 | same, PID | error removed (0.007 mrad), but 17 % overshoot, settles in 0.71 s |
 | same, cascade P/PI | 0 % overshoot, settles (2 %) in 0.29 s, 0.005 mrad error |
-| 1 rad step, PID saturated at 150 Nm | overshoot 29 % with anti-windup, 114 % and a limit cycle without |
+| 1 rad step, PID saturated at 150 Nm, integral gain tripled for this test | overshoot 29 % with anti-windup, 114 % and a limit cycle without |
 | whole sort cycle, 0.5 kg cube | max following error 5.4 mrad (elbow), other joints at most 3.0 mrad (fault limit 30) |
 | whole sort cycle, 3 kg payload | max following error 6.1 mrad |
 | 3 kg added while holding | peak 3.2 mrad, back under 0.1 mrad in 0.7 s |
-| E-stop at the fastest point of a move | stops along the path in 0.32 s, torque off after 0.37 s |
+| E-stop at the fastest point of the first transport move (0.86 rad/s) | stops along the path in 0.32 s, torque off after 0.37 s |
 | joint jammed mid-move | following-error trip after 77 ms (20 ms of it debounce), torque off in the same cycle |
 
 ![Step response](docs/drive/step_response.png)
@@ -438,6 +457,13 @@ wrote. Coil number = 8 x byte + bit of the `%QX` location.
 ## Limitations
 
 - The camera is synthetic (a rendered image with noise), not a real sensor. Containers are part of the cell layout and are not detected by the camera.
+- The camera renders the scene file, not the state of the cell: after a cycle the cubes are back
+  where the scene says, and nothing senses that a cube actually arrived in its container.
+- The IK is a local solver (damped least squares from a seed). It is reliable for the tool-down
+  poses the cell uses, not for arbitrary poses from a distant seed.
+- The planner limits tool speed, not joint speed; joint speeds are checked in tests, not enforced.
+- The E-stop button is a software input written over Modbus, and neither the PLC nor the ROS nodes
+  detect a dead bridge or a dead node yet (see [AUDIT_REPORT.md](AUDIT_REPORT.md)).
 - "Grasping" is a visual attach of the cube marker to the tool, not physics.
 - There is no collision avoidance and no planning around obstacles. Moves are straight lines in
   Cartesian space between hover points.
