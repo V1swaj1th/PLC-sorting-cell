@@ -121,6 +121,13 @@ target_include_directories(scene_server PUBLIC
 ament_target_dependencies(scene_server rclcpp std_msgs)
 target_link_libraries(scene_server Eigen3::Eigen ${YAML_CPP_TARGET})
 
+# Kinematics report: FK vs ur_description, Jacobian, IK success rates, planned joint speeds
+add_executable(kinematics_report src/kinematics_report.cpp)
+target_include_directories(kinematics_report PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_link_libraries(kinematics_report Eigen3::Eigen ${YAML_CPP_TARGET})
+
 # Servo evidence: drive firmware + simulated plant running the planned sort cycle (no ROS)
 add_executable(drive_report src/drive_report.cpp)
 target_include_directories(drive_report PUBLIC
@@ -136,7 +143,7 @@ target_include_directories(joint_drive PUBLIC
 ament_target_dependencies(joint_drive rclcpp sensor_msgs std_msgs)
 target_link_libraries(joint_drive servo_core::servo_sim)
 
-install(TARGETS fk_demo fk_checker ik_test traj_test cartesian_move_demo sort_plan_test sorting_sequencer plc_link_test plc_bridge validation_report teach_test teach_pendant scene_test scene_check scene_server drive_report joint_drive
+install(TARGETS kinematics_report fk_demo fk_checker ik_test traj_test cartesian_move_demo sort_plan_test sorting_sequencer plc_link_test plc_bridge validation_report teach_test teach_pendant scene_test scene_check scene_server drive_report joint_drive
   DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY programs/ DESTINATION share/${PROJECT_NAME}/programs)
